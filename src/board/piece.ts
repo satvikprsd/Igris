@@ -34,4 +34,8 @@ export namespace PieceUtils {
     export function swapColor(piece: Piece): Piece {
         return piece ^ Piece.ColorMask;
     }
+
+    export function makePiece(type: Piece, color: (Piece.White | Piece.Black)): Piece {
+        return (type & Piece.TypeMask) | (color & Piece.ColorMask);
+    }
 }

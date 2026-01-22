@@ -1,8 +1,10 @@
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
-import { Board } from './src/board';
-import { Piece } from './src/piece';
+import { Board } from './src/board/board';
+import { Piece } from './src/board/piece';
+import { MoveUtils, stringToSquare } from './src/move/move';
+import { MoveGenerator } from './src/move/move_generator';
 
 const app = express();
 const port = 3000;
@@ -27,6 +29,15 @@ app.post('/api/reset', (req, res) => {
     board.loadPositionFromFen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
     res.json({ message: "Board reset" });
 });
+
+app.post('/api/move', (req, res) => {
+    const { from, to } = req.body;
+    const sourceSquare = stringToSquare(from);
+    const targetSquare = stringToSquare(to);
+    const move = MoveGenerator.createMoveWithContext(board, sourceSquare, targetSquare);
+    board.makeMove(move);
+    res.json({ message: `Moved from ${from} to ${to}` });
+} );
 
 app.post('/api/test-move', (req, res) => {
     board.popBit(Piece.White | Piece.Pawn, 12);

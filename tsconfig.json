@@ -4,7 +4,8 @@
     // File Layout
     // "rootDir": "./src",
     // "outDir": "./dist",
-
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
     // Environment Settings
     // See also https://aka.ms/tsconfig/module
     "module": "ESNext",
@@ -40,6 +41,5 @@
     "noUncheckedSideEffectImports": true,
     "moduleDetection": "force",
     "skipLibCheck": true,
-  },
-  "type": "module"
+  }
 }

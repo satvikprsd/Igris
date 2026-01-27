@@ -20,6 +20,7 @@ export class Board {
     public allPieces: bigint = 0n;
     public sideToMove: Piece.White | Piece.Black = Piece.White;
     public currentGameState: number = 0;
+    public gameStateHistory: number[] = [];
     // 0000 0000 000000 0000
     // castlingRights enPassantSquare capturedPiece halfmoveClock
 
@@ -70,15 +71,23 @@ export class Board {
         const target = MoveUtils.getTargetSquare(move);
         const flag = MoveUtils.getMoveFlag(move);
         const movingPiece = this.getPieceOnSquare(source);
-        this.currentGameState = 0;
+
+        // console.log(this.currentGameState);
+        this.gameStateHistory.push(this.currentGameState);
+        
+        this.currentGameState &= ~(0b111111 << 8);
+        this.currentGameState &= ~BoardUtils.EP_MASK;
 
         if (flag === MoveFlag.Capture || flag >= MoveFlag.PromotionToKnightCapture) {
             const capturedPiece = this.getPieceOnSquare(target);
+            const capturedPieceType = PieceUtils.getType(capturedPiece);
+            this.currentGameState |= (capturedPieceType << 8);
             this.popBit(capturedPiece, target);
         }
 
         if (flag === MoveFlag.EnPassant) {
             const epCaptureSquare = (this.sideToMove === Piece.White) ? target - 8 : target + 8;
+            this.currentGameState |= (Piece.Pawn << 8);
             this.popBit(PieceUtils.swapColor(movingPiece), epCaptureSquare);
         }
         
@@ -109,15 +118,22 @@ export class Board {
             this.popBit(this.sideToMove | Piece.Rook, target + 1);
             this.setBit(this.sideToMove | Piece.Rook, target - 1);
         } else if (flag === MoveFlag.QueenCastle) {
-            console.log("her", this.sideToMove | Piece.Rook, target - 2, target + 1);
             this.popBit(this.sideToMove | Piece.Rook, target - 2);
             this.setBit(this.sideToMove | Piece.Rook, target + 1);
         }
         
-        this.currentGameState &= ~BoardUtils.EP_MASK;
         if (flag === MoveFlag.DoublePawnPush) {
             this.currentGameState |= (( (source % 8) + 1) << 4);
         }
+        
+        let updatedCastlingRights = BoardUtils.getCastlingRights(this);;
+
+        if (PieceUtils.getType(movingPiece) === Piece.King) {
+            updatedCastlingRights &= (this.sideToMove === Piece.White) ? ~(Castling.WK | Castling.WQ) : ~(Castling.BK | Castling.BQ);
+        }
+        // rook movement pending hai
+
+        this.currentGameState = (this.currentGameState & ~0b1111) | updatedCastlingRights;
         
         this.updateOccupancies();
         this.sideToMove ^= Piece.ColorMask;
@@ -130,7 +146,10 @@ export class Board {
 
         this.sideToMove ^= Piece.ColorMask;
 
-        const movingPiece = this.getPieceOnSquare(target);
+        const capturedType = BoardUtils.getCapturedPieceType(this);
+        const capturedPiece = capturedType !== Piece.None ? (capturedType | (this.sideToMove ^ Piece.ColorMask)) : Piece.None;
+
+        this.currentGameState = this.gameStateHistory.pop()!;
 
         if (flag === MoveFlag.KingCastle) {
             this.popBit(this.sideToMove | Piece.Rook, target - 1);
@@ -141,16 +160,23 @@ export class Board {
             this.setBit(this.sideToMove | Piece.Rook, target - 2);
         }
 
-        this.popBit(movingPiece, target);
+        const movedPieceType = MoveUtils.isPromotion(move) ? Piece.Pawn | this.sideToMove : this.getPieceOnSquare(target);
 
-        if (flag >= MoveFlag.PromotionToKnight && flag <= MoveFlag.PromotionToQueenCapture) {
-            this.setBit(this.sideToMove | Piece.Pawn, source);
+        this.popBit(this.getPieceOnSquare(target), target);
+        this.setBit(movedPieceType, source);
+
+        if (flag === MoveFlag.EnPassant) {
+            const epSquare = target + (this.sideToMove === Piece.White ? -8 : 8);
+            this.setBit(capturedPiece, epSquare);
         }
-        else {
-            this.setBit(movingPiece, source);
+        else if (capturedPiece !== Piece.None) {
+            this.setBit(capturedPiece, target);
         }
 
+        this.updateOccupancies();
+        // console.log(this.currentGameState);
     }
+
     
     toPieceArray(): string[] {
         const pieceSymbols: { [key: number]: string } = {
@@ -243,7 +269,7 @@ export class Board {
 
     private parseEnPassantSquare(fen: string): void {
         const file = fen.charCodeAt(0) - 'a'.charCodeAt(0);
-        this.currentGameState |= (file << 4);
+        this.currentGameState |= ((file + 1) << 4);
     }
 
     private parseHalfmoveClock(fen: string): void {
@@ -256,13 +282,14 @@ export class Board {
 export namespace BoardUtils {
     export const EP_MASK = 0b1111 << 4;
 
+    export function getEnPassantFile(board: Board): number {
+        return ((board.currentGameState >> 4) & 0b1111) - 1;
+    }
+
     export function getEnPassantSquare(board: Board): number {
-        const file = (board.currentGameState >> 4) & 0b1111;
-        if (file === 0) return -1;
-        const sideThatMoved = board.sideToMove === Piece.White ? Piece.Black : Piece.White;
-        const fileIndex = file - 1;
-        const rankIndex = sideThatMoved === Piece.White ? 2 : 5;
-        return rankIndex*8 + fileIndex;
+        const file = getEnPassantFile(board);
+        if (file < 0 || file > 7) return -1;
+        return (board.sideToMove === Piece.White) ? (5 * 8 + file) : (2 * 8 + file);
     }
 
     export function getCastlingRights(board: Board): number {

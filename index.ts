@@ -15,6 +15,8 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, '../public')));
 
 const board = new Board();
+const moveGenerator = new MoveGenerator(board);
+const moves: number[] = [];
 
 board.loadPositionFromFen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
 
@@ -31,13 +33,24 @@ app.post('/api/reset', (req, res) => {
 });
 
 app.post('/api/move', (req, res) => {
+    console.log(moveGenerator.generateLegalMoves(board.sideToMove).map((move) => MoveUtils.moveToString(move)));
     const { from, to } = req.body;
     const sourceSquare = stringToSquare(from);
     const targetSquare = stringToSquare(to);
-    const move = MoveGenerator.createMoveWithContext(board, sourceSquare, targetSquare);
+    const move = moveGenerator.createMoveWithContext(sourceSquare, targetSquare);
+    moves.push(move);
     board.makeMove(move);
     res.json({ message: `Moved from ${from} to ${to}` });
 } );
+
+app.post('/api/undo', (req, res) => {
+    if (moves.length === 0) {
+        return res.status(400).json({ error: "No moves to undo" });
+    }
+    const lastMove = moves.pop()!;
+    board.unmakeMove(lastMove);
+    res.json({ message: "Last move undone" });
+});
 
 app.post('/api/test-move', (req, res) => {
     board.popBit(Piece.White | Piece.Pawn, 12);
@@ -49,3 +62,4 @@ app.post('/api/test-move', (req, res) => {
 app.listen(port, () => {
     console.log(`Chess Engine running at http://localhost:${port}`);
 });
+

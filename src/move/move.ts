@@ -40,6 +40,11 @@ export namespace MoveUtils {
         return (move & FLAG_MASK) >> 12;
     }
 
+    export function isPromotion(move: Move) : boolean {
+        const flag = getMoveFlag(move);
+        return flag >= MoveFlag.PromotionToKnight && flag <= MoveFlag.PromotionToQueenCapture;
+    }
+
     export function moveToString(move: Move) : string {
         const source = getSourceSquare(move);
         const target = getTargetSquare(move);

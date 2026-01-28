@@ -5,6 +5,7 @@ import { Board } from './src/board/board';
 import { Piece } from './src/board/piece';
 import { MoveUtils, stringToSquare } from './src/move/move';
 import { MoveGenerator } from './src/move/move_generator';
+import { Evaluation } from './src/engine/evaluation';
 
 const app = express();
 const port = 3000;
@@ -41,6 +42,7 @@ app.post('/api/move', (req, res) => {
     const move = moveGenerator.createMoveWithContext(sourceSquare, targetSquare);
     moves.push(move);
     board.makeMove(move);
+    console.log(Evaluation.evaluate(board));
     res.json({ message: `Moved from ${from} to ${to}` });
 } );
 

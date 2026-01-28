@@ -297,6 +297,17 @@ export class Board {
         const halfmoveClock = parseInt(fen);
         this.currentGameState |= (halfmoveClock << 14);
     }
+
+    public printBoard(): void {
+        const boardArray = this.toPieceArray();
+        for (let rank = 7; rank >= 0; rank--) {
+            let row = '';
+            for (let file = 0; file < 8; file++) {
+                row += boardArray[rank * 8 + file] + ' ';
+            }
+            console.log(row);
+        }
+    }
 }
 
 

@@ -322,6 +322,10 @@ export class MoveGenerator {
         return false;
     }
 
+    public isKingInCheck(side: Piece.Black | Piece.White): boolean {
+        const kingSquare = this.getKingSquare(side);
+        return this.isSquareAttacked(kingSquare, side ^ Piece.ColorMask);
+    }
 
     public createMoveWithContext(source: number, target: number): Move {
         const targetMask = 1n << BigInt(target);

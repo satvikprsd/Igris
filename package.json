@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "start": "npx tsx index.ts",
+    "start": "npx tsx --watch index.ts",
     "perft": "npx tsx src/tests/perft.ts"
   },
   "repository": {
@@ -25,8 +25,10 @@
     "nodemon": "^3.1.11"
   },
   "devDependencies": {
+    "@types/chai": "^5.2.3",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
+    "chai": "^6.2.2",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3"
   }

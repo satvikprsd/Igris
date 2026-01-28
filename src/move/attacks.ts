@@ -172,6 +172,14 @@ export class Attacks {
         return this.getRookAttacks(square, occupied) | this.getBishopAttacks(square, occupied);
     }
 
+    public static whitePawnAttacksFromBitboard(pawns: bigint): bigint {
+        return ((pawns << 7n) & ~Attacks.FILE_H)| ((pawns << 9n) & ~Attacks.FILE_A);
+    }   
+
+    public static blackPawnAttacksFromBitboard(pawns: bigint): bigint {
+        return ((pawns >> 7n) & ~Attacks.FILE_A) | ((pawns >> 9n) & ~Attacks.FILE_H);
+    }
+
     public static getLSB(bitboard: bigint): number {
         if (bitboard === 0n) return -1;
         

@@ -10,11 +10,16 @@ export class MoveGenerator {
         this.board = board;
     }
 
-    public generateLegalMoves(color: number): Move[] {
+    public generateLegalMoves(color: number, onlyCaptures?: boolean): Move[] {
         const pseudoLegalMoves = this.generatePseudoLegalMoves(color);
         const legalMoves: Move[] = [];
 
         for (const move of pseudoLegalMoves) {
+            if (onlyCaptures) {
+                const flag = MoveUtils.getMoveFlag(move);
+                const isCapture = flag === MoveFlag.Capture || flag === MoveFlag.EnPassant || flag >= MoveFlag.PromotionToKnightCapture;
+                if (!isCapture) continue;
+            }
             this.board.makeMove(move);
             if (!this.isSquareAttacked(this.getKingSquare(color), color ^ Piece.ColorMask)) {
                 legalMoves.push(move);

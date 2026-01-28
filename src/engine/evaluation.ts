@@ -3,7 +3,7 @@ import { Piece, PieceUtils } from "../board/piece";
 
 export class Evaluation {
 
-    private static pieceValues: { [key: number]: number } = {
+    static pieceValues: { [key: number]: number } = {
         [Piece.Pawn]: 100,
         [Piece.Knight]: 320,
         [Piece.Bishop]: 330,
@@ -36,21 +36,40 @@ export class Evaluation {
     };
 
     public static evaluate(board: Board): number {
-        board.printBoard();
-        let score = 0;
+        // board.printBoard();
+        const whiteEval = this.evalSide(Piece.White, board);
+        const blackEval = this.evalSide(Piece.Black, board);
+        const evaluation = whiteEval - blackEval;
+        const perspective = board.sideToMove === Piece.White ? 1 : -1;
+        return evaluation * perspective;
+    }
 
-        for (let square = 0; square < 64; square++) {
-            const piece = board.getPieceOnSquare(square);
-            if (piece === Piece.None) continue;
+    private static evalSide(side: Piece.White | Piece.Black, board: Board): number {
+        let material = 0;
+        const PST_SCALE = 0.15;
+        for (let piece = (Piece.King | side); piece <= (Piece.Queen | side); piece++) {
+            let bb = board.bitboards[piece];
+            if (bb === 0n) continue;
 
             const pieceType = PieceUtils.getType(piece);
-            const isWhite = PieceUtils.isWhite(piece);
 
-            let pieceValue = this.pieceValues[pieceType] || 0;
-            const pstScore = this.pieceSquareTables[pieceType] ? this.pieceSquareTables[pieceType]![isWhite ? square : square ^ 56] || 0 : 0;
-            score += isWhite ? (pieceValue + pstScore) : -(pieceValue + pstScore);
+            const pieceValue = this.pieceValues[pieceType] || 0;
+            const pst = this.pieceSquareTables[pieceType];
+
+            while (bb !== 0n) {
+                const square = this.getLSBIndex(bb!);
+                bb! &= bb! - 1n;
+
+                const pstScore = pst ? pst[side === Piece.White ? square : (square ^ 56)] || 0 : 0;
+                material += pieceValue + Math.floor(pstScore*PST_SCALE);
+            }
         }
 
-        return board.sideToMove === Piece.White ? score : -score;
+        return material;
     }
+
+    static getLSBIndex(bb: bigint): number {
+        return Number(BigInt.asUintN(64, bb & -bb).toString(2).length - 1);
+    }
+
 }

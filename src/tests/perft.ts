@@ -1,6 +1,7 @@
 import { Board } from "../board/board";
-import { MoveUtils } from "../move/move";
 import { MoveGenerator } from "../move/move_generator";
+import { expect } from "chai";
+import { describe, it } from "node:test";
 
 const board = new Board();
 const moveGenerator = new MoveGenerator(board);
@@ -83,21 +84,62 @@ const perftPositions: { [key: number]: { fen: string; table: { [depth: number]: 
     }
 }
 
-const position  = process.argv[2] ? perftPositions[parseInt(process.argv[2])] : perftPositions[1];
-const depth = process.argv[3] ? parseInt(process.argv[3]) : 3;
+const position  = process.argv[2] ? perftPositions[parseInt(process.argv[2])] : undefined;
+const depth = process.argv[3] ? parseInt(process.argv[3]) : undefined;
 
-board.loadPositionFromFen(position!.fen);
-const start = process.hrtime.bigint();
-const nodes = testPerft(depth);
-const end = process.hrtime.bigint();
-const elapsedNs = Number(end - start);
-const elapsedSeconds = elapsedNs / 1e9;
-const nps = nodes / elapsedSeconds;
+if (!position || !depth) {
+    const maxDepth = 3;
+    console.log("Usage: npm run perft <position_number> <depth>");
+    console.log("Staring Bulk Perft Test...");
+    describe("Perft Tests", () => {
+        for (const key in perftPositions) {
+            const pos = perftPositions[key]!;
 
-console.log(`Perft test for position: ${position!.fen}`);
-console.log(`Depth: ${depth}`);
-console.log('Expected nodes:', position!.table[depth]);
-console.log(`Nodes: ${nodes}`);
-console.log(position!.table[depth] === nodes ? "Perft test passed!" : "Perft test failed!");
-console.log(`Time taken: ${elapsedSeconds.toFixed(2)} seconds`);
-console.log(`NPS: ${nps.toLocaleString()}`);
+            describe(`Position ${key}`, () => {
+                for (let depth = 1; depth <= maxDepth; depth++) {
+                    it(`Depth ${depth}`, () => {
+                        board.loadPositionFromFen(pos.fen);
+
+                        const start = process.hrtime.bigint();
+                        const nodes = testPerft(depth);
+                        const end = process.hrtime.bigint();
+
+                        const elapsedNs = Number(end - start);
+                        const elapsedSeconds = elapsedNs / 1e9;
+                        const nps = Math.floor(nodes / elapsedSeconds);
+
+                        console.log(
+                            `Pos ${key} | Depth ${depth} | Nodes ${nodes.toLocaleString()} | ` +
+                            `Time ${elapsedSeconds.toFixed(3)}s | NPS ${nps.toLocaleString()}`
+                        );
+
+                        const expected = pos.table?.[depth];
+                        if (expected !== undefined) {
+                            expect(nodes).to.equal(expected);
+                        }
+                    });
+                }
+            });
+        }
+    });
+}
+else {
+    describe(`Perft test for position: ${position!.fen}`, () => {
+        it(`Depth ${depth}`, () => {
+            console.log(`Running perft test for position: ${position!.fen} at depth ${depth}`);
+            board.loadPositionFromFen(position!.fen);
+            const start = process.hrtime.bigint();
+            const nodes = testPerft(depth);
+            const end = process.hrtime.bigint();
+            const elapsedNs = Number(end - start);
+            const elapsedSeconds = elapsedNs / 1e9;
+            const nps = nodes / elapsedSeconds;
+
+            console.log(`Nodes: ${nodes}`);
+            console.log(position!.table[depth] === nodes ? "Perft test passed!" : "Perft test failed!");
+            console.log(`Time taken: ${elapsedSeconds.toFixed(2)} seconds`);
+            console.log(`NPS: ${nps.toLocaleString()}`);
+            expect(nodes).to.equal(position!.table[depth]);
+        });
+    });
+}

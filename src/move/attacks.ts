@@ -16,7 +16,8 @@ export class Attacks {
     private static initializeAttacks(): void {
         this.initializeKnightAttacks();
         this.initializeKingAttacks();
-        this.initializePawnAttacks();
+        this.initializePawnAttacks(); 
+        // maybe magicboard if i understand it later
     }
 
     private static initializeKnightAttacks(): void {
@@ -95,8 +96,82 @@ export class Attacks {
         }
     }
 
-    // rays pending hai (study)
-    
+    public static getRookAttacks(square: number, occupied: bigint): bigint {
+        let attacks = 0n;
+        const rank = square >> 3;
+        const file = square & 7;
+
+        // top
+        for (let r = rank + 1; r < 8; r++) {
+            const sq = (r << 3) + file;
+            attacks |= (1n << BigInt(sq));
+            if ((occupied & (1n << BigInt(sq))) !== 0n) break;
+        }
+
+        // bottom
+        for (let r = rank - 1; r >= 0; r--) {
+            const sq = (r << 3) + file;
+            attacks |= (1n << BigInt(sq));
+            if ((occupied & (1n << BigInt(sq))) !== 0n) break;
+        }
+
+        // right
+        for (let f = file + 1; f < 8; f++) {
+            const sq = (rank << 3) + f;
+            attacks |= (1n << BigInt(sq));
+            if ((occupied & (1n << BigInt(sq))) !== 0n) break;
+        }
+
+        //left
+        for (let f = file - 1; f >= 0; f--) {
+            const sq = (rank << 3) + f;
+            attacks |= (1n << BigInt(sq));
+            if ((occupied & (1n << BigInt(sq))) !== 0n) break;
+        }
+
+        return attacks;
+    }
+
+    public static getBishopAttacks(square: number, occupied: bigint): bigint {
+        let attacks = 0n;
+        const rank = square >> 3;
+        const file = square & 7;
+
+        //top-right
+        for (let r = rank + 1, f = file + 1; r < 8 && f < 8; r++, f++) {
+            const sq = (r << 3) + f;
+            attacks |= (1n << BigInt(sq));
+            if ((occupied & (1n << BigInt(sq))) !== 0n) break;
+        }
+
+        //top-left
+        for (let r = rank + 1, f = file - 1; r < 8 && f >= 0; r++, f--) {
+            const sq = (r << 3) + f;
+            attacks |= (1n << BigInt(sq));
+            if ((occupied & (1n << BigInt(sq))) !== 0n) break;
+        }
+
+        //bottom-right
+        for (let r = rank - 1, f = file + 1; r >= 0 && f < 8; r--, f++) {
+            const sq = (r << 3) + f;
+            attacks |= (1n << BigInt(sq));
+            if ((occupied & (1n << BigInt(sq))) !== 0n) break;
+        }
+
+        //bottom-left
+        for (let r = rank - 1, f = file - 1; r >= 0 && f >= 0; r--, f--) {
+            const sq = (r << 3) + f;
+            attacks |= (1n << BigInt(sq));
+            if ((occupied & (1n << BigInt(sq))) !== 0n) break;
+        }
+
+        return attacks;
+    }
+
+    public static getQueenAttacks(square: number, occupied: bigint): bigint {
+        return this.getRookAttacks(square, occupied) | this.getBishopAttacks(square, occupied);
+    }
+
     public static getLSB(bitboard: bigint): number {
         if (bitboard === 0n) return -1;
         
@@ -110,7 +185,7 @@ export class Attacks {
         
         return square;
     }
-    
+
     public static popLSB(bitboard: bigint): bigint {
         return bitboard & (bitboard - 1n);
     }

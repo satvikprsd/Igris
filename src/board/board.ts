@@ -54,6 +54,9 @@ export class Board {
         this.whitePieces = 0n;
         this.blackPieces = 0n;
         this.allPieces = 0n;
+        this.currentGameState = 0;
+        this.sideToMove = Piece.White;
+        this.gameStateHistory = [];
     }
 
     getPieceOnSquare(square: number): Piece {
@@ -131,7 +134,24 @@ export class Board {
         if (PieceUtils.getType(movingPiece) === Piece.King) {
             updatedCastlingRights &= (this.sideToMove === Piece.White) ? ~(Castling.WK | Castling.WQ) : ~(Castling.BK | Castling.BQ);
         }
-        // rook movement pending hai
+        
+        if (PieceUtils.getType(movingPiece) === Piece.Rook) {
+            if (this.sideToMove === Piece.White) {
+                if (source === 0) updatedCastlingRights &= ~Castling.WQ;
+                if (source === 7) updatedCastlingRights &= ~Castling.WK;
+            } else {
+                if (source === 56) updatedCastlingRights &= ~Castling.BQ;
+                if (source === 63) updatedCastlingRights &= ~Castling.BK;
+            }
+        }
+    
+        // If rook is captured
+        if (flag === MoveFlag.Capture || flag >= MoveFlag.PromotionToKnightCapture) {
+            if (target === 0) updatedCastlingRights &= ~Castling.WQ;
+            if (target === 7) updatedCastlingRights &= ~Castling.WK;
+            if (target === 56) updatedCastlingRights &= ~Castling.BQ;
+            if (target === 63) updatedCastlingRights &= ~Castling.BK;
+        }
 
         this.currentGameState = (this.currentGameState & ~0b1111) | updatedCastlingRights;
         
@@ -160,9 +180,10 @@ export class Board {
             this.setBit(this.sideToMove | Piece.Rook, target - 2);
         }
 
-        const movedPieceType = MoveUtils.isPromotion(move) ? Piece.Pawn | this.sideToMove : this.getPieceOnSquare(target);
+        const pieceAtTarget = this.getPieceOnSquare(target);
+        const movedPieceType = MoveUtils.isPromotion(move) ? Piece.Pawn | this.sideToMove : pieceAtTarget;
 
-        this.popBit(this.getPieceOnSquare(target), target);
+        this.popBit(pieceAtTarget, target);
         this.setBit(movedPieceType, source);
 
         if (flag === MoveFlag.EnPassant) {

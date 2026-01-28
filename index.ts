@@ -23,6 +23,7 @@ board.loadPositionFromFen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 
 app.get('/api/board', (req, res) => {
     res.json({
         board: board.toPieceArray(), // ["r", "n", ...]
+        legalMoves: moveGenerator.generateLegalMoves(board.sideToMove).map((move) => MoveUtils.moveToString(move)),
         turn: (board.sideToMove === Piece.White) ? 'White' : 'Black'
     });
 });
@@ -62,4 +63,3 @@ app.post('/api/test-move', (req, res) => {
 app.listen(port, () => {
     console.log(`Chess Engine running at http://localhost:${port}`);
 });
-

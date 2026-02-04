@@ -1,3 +1,5 @@
+import { Piece } from "../board/piece";
+
 export type Move = number;
 // 0000 000000 000000
 // flag target source
@@ -44,6 +46,27 @@ export namespace MoveUtils {
         const flag = getMoveFlag(move);
         return flag >= MoveFlag.PromotionToKnight && flag <= MoveFlag.PromotionToQueenCapture;
     }
+
+    export function getPromotionPieceType(move: Move) : number {
+        const flag = getMoveFlag(move);
+        switch (flag) {
+            case MoveFlag.PromotionToKnight:
+            case MoveFlag.PromotionToKnightCapture:
+                return Piece.Knight;
+            case MoveFlag.PromotionToBishop:
+            case MoveFlag.PromotionToBishopCapture:
+                return Piece.Bishop;
+            case MoveFlag.PromotionToRook:
+            case MoveFlag.PromotionToRookCapture:
+                return Piece.Rook;
+            case MoveFlag.PromotionToQueen:
+            case MoveFlag.PromotionToQueenCapture:
+                return Piece.Queen;
+            default:
+                return Piece.None;
+        }
+    }
+    
 
     export function moveToString(move: Move) : string {
         const source = getSourceSquare(move);

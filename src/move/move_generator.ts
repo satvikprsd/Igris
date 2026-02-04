@@ -1,5 +1,6 @@
 import { Board, BoardUtils, Castling } from "../board/board";
 import { Piece, PieceUtils } from "../board/piece";
+import { Evaluation } from "../engine/evaluation";
 import { Attacks } from "./attacks";
 import { Move, MoveFlag, MoveUtils, squareToString } from "./move";
 
@@ -18,7 +19,11 @@ export class MoveGenerator {
             if (onlyCaptures) {
                 const flag = MoveUtils.getMoveFlag(move);
                 const isCapture = flag === MoveFlag.Capture || flag === MoveFlag.EnPassant || flag >= MoveFlag.PromotionToKnightCapture;
-                if (!isCapture) continue;
+                const capturedPieceType = this.board.getPieceOnSquare(MoveUtils.getTargetSquare(move));
+                const movePieceType = this.board.getPieceOnSquare(MoveUtils.getSourceSquare(move));
+
+                const isGoodCapture = (PieceUtils.getType(capturedPieceType) >= Piece.Queen) || (Evaluation.pieceValues[PieceUtils.getType(capturedPieceType)]! > Evaluation.pieceValues[PieceUtils.getType(movePieceType)]!);
+                if (!isCapture || !isGoodCapture) continue;
             }
             this.board.makeMove(move);
             if (!this.isSquareAttacked(this.getKingSquare(color), color ^ Piece.ColorMask)) {
@@ -361,5 +366,64 @@ export class MoveGenerator {
 
         console.log(`Creating move from ${squareToString(source)} to ${squareToString(target)} with flag ${MoveFlag[flag]}`);
         return MoveUtils.encode(source, target, flag);
+    }
+
+    public generateAttacksForSide(color: number): bigint {
+        let attacks = 0n;
+        const friendlyPieces = (color === Piece.White) ? this.board.whitePieces : this.board.blackPieces;
+
+        for (let pieceType = Piece.Pawn; pieceType <= Piece.King; pieceType++) {
+            const pieceBitboard = this.board.bitboards[color | pieceType];
+            let pieces = pieceBitboard;
+
+            while (pieces !== 0n) {
+                const square = Attacks.getLSB(pieces!);
+                pieces = Attacks.popLSB(pieces!);
+
+                let pieceAttacks: bigint;
+                switch (pieceType) {
+                    case Piece.Pawn:
+                        pieceAttacks = (color === Piece.White) ? Attacks.whitePawnAttacks[square]! : Attacks.blackPawnAttacks[square]!;
+                        break;
+                    case Piece.Knight:
+                        pieceAttacks = Attacks.knightAttacks[square]!;
+                        break;
+                    case Piece.Bishop:
+                        pieceAttacks = Attacks.getBishopAttacks(square, this.board.allPieces);
+                        break;
+                    case Piece.Rook:
+                        pieceAttacks = Attacks.getRookAttacks(square, this.board.allPieces);
+                        break;
+                    case Piece.Queen:
+                        pieceAttacks = Attacks.getQueenAttacks(square, this.board.allPieces);
+                        break;
+                    case Piece.King:
+                        pieceAttacks = Attacks.kingAttacks[square]!;
+                        break;
+                    default:
+                        pieceAttacks = 0n;
+                }
+
+                attacks |= pieceAttacks;
+            }
+        }
+
+        return attacks & ~friendlyPieces;
+    }
+
+    public generatePawnAttacksForSide(color: number): bigint {
+        let attacks = 0n;
+        const pawnBitboard = this.board.bitboards[color | Piece.Pawn];
+        
+        let pawns = pawnBitboard;
+        while (pawns !== 0n) {
+            const square = Attacks.getLSB(pawns!);
+            pawns = Attacks.popLSB(pawns!);
+            
+            const pawnAttacks = (color === Piece.White) ? Attacks.whitePawnAttacks[square]! : Attacks.blackPawnAttacks[square]!;
+            attacks |= pawnAttacks;
+        }
+        
+        return attacks;
     }
 }

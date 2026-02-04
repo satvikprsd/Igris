@@ -5,50 +5,68 @@ import { Move, MoveUtils } from "../move/move";
 import { Evaluation } from "./evaluation";
 
 export class MoveOrdering {
-    public static orderMoves(board: Board, moves: Move[]): Move[] {
+    public static orderMoves(board: Board, moves: Move[], ttMove: Move | null = null): void {
         const opponentPawnAttacks = board.sideToMove === Piece.White ? Attacks.blackPawnAttacksFromBitboard(board.bitboards[Piece.Pawn | Piece.Black]!) : Attacks.whitePawnAttacksFromBitboard(board.bitboards[Piece.Pawn | Piece.White]!);
 
-        const scored = moves.map(move => ({move, score: this.scoreMove(board, move, opponentPawnAttacks)}));
+        const opponentProtectedSquares = this.getProtectedSquares(board, board.sideToMove ^ Piece.ColorMask);
+        const scored = moves.map(move => ({move, score: this.scoreMove(board, move, opponentPawnAttacks, opponentProtectedSquares, ttMove)}));
 
         scored.sort((a, b) => b.score - a.score);
 
         for (let i = 0; i < moves.length; i++) {
+
             moves[i] = scored[i]!.move;
         }
-
-        return moves;
+        
     }
 
-    private static scoreMove(board: Board, move: Move, opponentPawnAttacks: bigint): number {
+    private static scoreMove(board: Board, move: Move, opponentPawnAttacks: bigint, protectedSquares: bigint, ttMove: Move | null): number {
+        if (ttMove && move === ttMove) {
+            return 1000000000;
+        }
+
         let moveScoreGuess = 0;
 
         const from = MoveUtils.getSourceSquare(move);
         const to = MoveUtils.getTargetSquare(move);
 
-        const movePieceType = board.getPieceOnSquare(from);
-        const capturedPieceType = board.getPieceOnSquare(to);
+        const movePiece = board.getPieceOnSquare(from);
+        const capturedPiece = board.getPieceOnSquare(to);
+
+        const movePieceType = PieceUtils.getType(movePiece);
+        const capturedPieceType = PieceUtils.getType(capturedPiece);
+        
+        const fromSquareEval = board.sideToMove === Piece.Black ? Evaluation.pieceSquareTables[movePieceType]![from]! : Evaluation.pieceSquareTables[movePieceType]![from ^ 56]!;
+        const toSquareEval = board.sideToMove === Piece.Black ? Evaluation.pieceSquareTables[movePieceType]![to]! : Evaluation.pieceSquareTables[movePieceType]![to ^ 56]!;
+
+        moveScoreGuess += toSquareEval - fromSquareEval;
 
         if (capturedPieceType !== Piece.None) {
             const capturedPieceValue = this.getPieceValue(capturedPieceType);
             const movePieceValue = this.getPieceValue(movePieceType);
-            if (capturedPieceValue >= movePieceValue) {
-                moveScoreGuess += 1000 + 10*capturedPieceValue - movePieceValue;
+            const toBB = 1n << BigInt(to);
+
+            if ((protectedSquares & toBB) !== 0n) {
+                if (capturedPieceValue >= movePieceValue) {
+                    moveScoreGuess += (5 * capturedPieceValue) - movePieceValue;
+                } else {
+                    moveScoreGuess += capturedPieceValue - movePieceValue;
+                }
+            } else {
+                moveScoreGuess += (10 * capturedPieceValue) - movePieceValue;
             }
-            else if ((opponentPawnAttacks & (1n << BigInt(to))) !== 0n) {
-                moveScoreGuess += 10*capturedPieceValue - movePieceValue - 1000;
-            }
-            else {
-                moveScoreGuess += 10*capturedPieceValue - movePieceValue;
-            }
-            
         }
-        else if (MoveUtils.isPromotion(move)) {
-            moveScoreGuess += 800;
+
+        if (MoveUtils.isPromotion(move)) {
+            moveScoreGuess += this.getPieceValue(MoveUtils.getPromotionPieceType(move));
         }
-        else {
-            if ((opponentPawnAttacks & (1n << BigInt(to))) !== 0n) {
-                moveScoreGuess -= this.getPieceValue(movePieceType)/10;
-            }
+
+        if ((opponentPawnAttacks & (1n << BigInt(to))) !== 0n) {
+            moveScoreGuess -= this.getPieceValue(movePieceType);
+        }
+
+        if (capturedPieceType === Piece.None && (protectedSquares & (1n << BigInt(to))) !== 0n) {
+            moveScoreGuess -= 50;
         }
         
         return moveScoreGuess
@@ -57,4 +75,51 @@ export class MoveOrdering {
     private static getPieceValue(piece: Piece): number {
         return Evaluation.pieceValues[PieceUtils.getType(piece)] || 0;
     }
+
+
+    public static getProtectedSquares(board: Board, color: Piece.White | Piece.Black): bigint {
+        let protectedSquares = 0n;
+        const occupied = board.allPieces;
+
+        const opponentPawns = board.bitboards[Piece.Pawn | color] || 0n;    
+        protectedSquares |= board.sideToMove === Piece.White ? Attacks.blackPawnAttacksFromBitboard(opponentPawns) : Attacks.whitePawnAttacksFromBitboard(opponentPawns);
+
+        let opponentKnights = board.bitboards[Piece.Knight | color] || 0n;
+        while (opponentKnights !== 0n) {
+            const knightSquare = Evaluation.getLSBIndex(opponentKnights);
+            protectedSquares |= Attacks.knightAttacks[knightSquare]!;
+            opponentKnights &= opponentKnights - 1n;
+        }
+
+
+        let opponentBishops = board.bitboards[Piece.Bishop | color] || 0n;
+        while (opponentBishops !== 0n) {
+            const bishopSquare = Evaluation.getLSBIndex(opponentBishops);
+            protectedSquares |= Attacks.getBishopAttacks(bishopSquare, occupied);
+            opponentBishops &= opponentBishops - 1n;
+        }
+        
+        let opponentRooks = board.bitboards[Piece.Rook | color] || 0n;
+        while (opponentRooks !== 0n) {
+            const rookSquare = Evaluation.getLSBIndex(opponentRooks);
+            protectedSquares |= Attacks.getRookAttacks(rookSquare, occupied);
+            opponentRooks &= opponentRooks - 1n;
+        }
+
+        let opponentQueens = board.bitboards[Piece.Queen | color] || 0n;
+        while (opponentQueens !== 0n) {
+            const queenSquare = Evaluation.getLSBIndex(opponentQueens);
+            protectedSquares |= Attacks.getQueenAttacks(queenSquare, occupied);
+            opponentQueens &= opponentQueens - 1n;
+        }
+
+        let opponentKing = board.bitboards[Piece.King | color] || 0n;
+        if (opponentKing !== 0n) {
+            const kingSquare = Evaluation.getLSBIndex(opponentKing);
+            protectedSquares |= Attacks.kingAttacks[kingSquare]!;
+        }
+        
+        return protectedSquares;
+    }
+
 }

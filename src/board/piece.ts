@@ -38,4 +38,18 @@ export namespace PieceUtils {
     export function makePiece(type: Piece, color: (Piece.White | Piece.Black)): Piece {
         return (type & Piece.TypeMask) | (color & Piece.ColorMask);
     }
+
+    export function pieceTypeToChar(piece: Piece): string {
+        if (piece === Piece.None) return '.';
+        const charMap: { [key: number]: string } = {
+            [Piece.Knight]: 'N',
+            [Piece.Bishop]: 'B',
+            [Piece.Rook]: 'R',
+            [Piece.Queen]: 'Q',
+            [Piece.King]: 'K',
+            [Piece.None]: '.'
+        };
+        const char = charMap[piece] || '?';
+        return char
+    }
 }

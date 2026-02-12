@@ -1,4 +1,5 @@
-import { Piece } from "../board/piece";
+import { Board } from "../board/board";
+import { Piece, PieceUtils } from "../board/piece";
 
 export type Move = number;
 // 0000 000000 000000
@@ -47,6 +48,11 @@ export namespace MoveUtils {
         return flag >= MoveFlag.PromotionToKnight && flag <= MoveFlag.PromotionToQueenCapture;
     }
 
+    export function isCapture(move: Move) : boolean {
+        const flag = getMoveFlag(move);
+        return flag === MoveFlag.Capture || flag === MoveFlag.EnPassant || flag >= MoveFlag.PromotionToKnightCapture;
+    }
+
     export function getPromotionPieceType(move: Move) : number {
         const flag = getMoveFlag(move);
         switch (flag) {
@@ -73,11 +79,49 @@ export namespace MoveUtils {
         const target = getTargetSquare(move);
         return squareToString(source) + squareToString(target);
     }
+
+    export function moveToPGN(move: Move, board: Board): string {
+        const source = getSourceSquare(move);
+        const target = getTargetSquare(move);
+        const flag = getMoveFlag(move);
+        const movePiece = board.getPieceOnSquare(target);
+        let pgnMove = "";
+
+        if (flag === MoveFlag.KingCastle) {
+            return "O-O";
+        } else if (flag === MoveFlag.QueenCastle) {
+            return "O-O-O";
+        }
+
+        const movePieceType = PieceUtils.getType(movePiece);
+        
+        if (movePieceType !== Piece.Pawn && !MoveUtils.isPromotion(move)) {
+            pgnMove += PieceUtils.pieceTypeToChar(movePieceType);
+            pgnMove += squareToString(source)[0];
+        }
+
+        const isCapture = flag === MoveFlag.Capture || flag === MoveFlag.EnPassant || flag >= MoveFlag.PromotionToKnightCapture;
+        
+        if (isCapture) {
+            if (movePieceType === Piece.Pawn) {
+                pgnMove += squareToString(source)[0];
+            }
+            pgnMove += "x";
+        }
+
+        pgnMove += squareToString(target);
+
+        if (MoveUtils.isPromotion(move)) {
+            pgnMove += "=" + PieceUtils.pieceTypeToChar(MoveUtils.getPromotionPieceType(move));
+        }
+
+        return pgnMove;
+    }
 }
 
 export function squareToString(square: number): string {
-    const file = square % 8;
-    const rank = Math.floor(square / 8);
+    const file = square & 7;
+    const rank = square >> 3;
     return String.fromCharCode('a'.charCodeAt(0) + file) + (rank+1).toString();
 }
 

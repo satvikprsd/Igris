@@ -4,8 +4,9 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "start": "npx tsx --watch index.ts",
-    "perft": "npx tsx src/tests/perft.ts"
+    "start": "tsc && node dist/index.js",
+    "perft": "tsc && node dist/src/tests/perft.js",
+    "botvbot": "tsc && node dist/src/tests/botvbot.js"
   },
   "repository": {
     "type": "git",
@@ -28,6 +29,7 @@
     "@types/chai": "^5.2.3",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
+    "@types/node": "^25.2.2",
     "chai": "^6.2.2",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3"

@@ -1,7 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
-import { Board } from './src/board/board';
+import { Board, startFEN } from './src/board/board';
 import { Piece, PieceUtils } from './src/board/piece';
 import { MoveUtils, stringToSquare } from './src/move/move';
 import { MoveGenerator } from './src/move/move_generator';
@@ -21,6 +21,7 @@ const board = new Board();
 const moveGenerator = new MoveGenerator(board);
 const search = new Search(board);
 const moves: number[] = [];
+const pgnMoves: string[] = [];
 const initialFen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 let playerColor = Piece.White;
 
@@ -39,6 +40,9 @@ app.get('/api/board', (req, res) => {
 app.post('/api/reset', (req, res) => {
     board.loadPositionFromFen(initialFen);
     playerColor = Piece.White;
+    moves.length = 0;
+    pgnMoves.length = 0;
+    
     res.json({ message: "Board reset" });
 });
 
@@ -76,11 +80,20 @@ app.post('/api/test-move', (req, res) => {
 app.post('/api/bot-move', (req, res) => {
     const legalMoves = moveGenerator.generateLegalMoves(board.sideToMove);
     if (legalMoves.length === 0) {
-        console.log(moves.map(m => MoveUtils.moveToString(m)).join(' '));
+        let finalPGN = ''
+        pgnMoves.map((move, index) => {
+            if (index % 2 === 0) {
+                finalPGN += `${Math.floor(index/2) + 1}. ${move} `;
+            } else {
+                finalPGN += `${move} `;
+            }
+        })
+        console.log("Game over. Final PGN:", `[FEN "${initialFen}"] \n ${finalPGN}`);
         return res.json({ message: "Game over" });
     }
-    const depth = 4;
-    const [bestMove, bestEvaluation] = search.search(depth)!;
+    
+    const timePerMove = 2000;
+    const [bestMove, bestEvaluation] = search.search(timePerMove)!;
 
     if (!bestMove) {
         return res.status(500).json({ error: "Bot failed to find a move" });
@@ -90,9 +103,11 @@ app.post('/api/bot-move', (req, res) => {
 
     board.makeMove(bestMove);
     moves.push(bestMove);
+    const pgnMove = MoveUtils.moveToPGN(bestMove, board);
+    pgnMoves.push(pgnMove);
 
     res.json({
-        move: moveString,
+        move: pgnMove,
         evaluation: bestEvaluation * (board.sideToMove === Piece.White ? -1 : 1)/100,
         turn: board.sideToMove === Piece.White ? "White" : "Black"
     });

@@ -30,18 +30,45 @@ export class Board {
     // 0000 0000 000000 0000
     // castlingRights enPassantSquare capturedPiece halfmoveClock
     public gameStateHistory: GameState[] = [];
+    public historyIndex: number = 0;
     public zobristKey: bigint = 0n;
+    public mailbox: Piece[] = new Array(64).fill(Piece.None);
 
     constructor() {
         this.bitboards = new Array<bigint>(15).fill(0n);
+        for (let i = 0; i < 1024; i++) {
+            this.gameStateHistory[i] = {
+                zobrist: 0n,
+                sideToMove: Piece.White,
+                state: 0
+            };
+        };
     }
 
     setBit(piece: Piece, square: number): void {
-        this.bitboards[piece]! |= (1n << BigInt(square));
+        const mask = 1n << BigInt(square);
+        this.bitboards[piece]! |= mask;
+        this.mailbox[square] = piece;
+        
+        if (piece & Piece.ColorMask) { // Black
+            this.blackPieces |= mask;
+        } else { // White
+            this.whitePieces |= mask;
+        }
+        this.allPieces |= mask;
     }
 
     popBit(piece: Piece, square: number): void {
-        this.bitboards[piece]! &= ~(1n << BigInt(square));
+        const mask = ~(1n << BigInt(square));
+        this.bitboards[piece]! &= mask;
+        this.mailbox[square] = Piece.None;
+        
+        if (piece & Piece.ColorMask) { // Black
+            this.blackPieces &= mask;
+        } else { // White
+            this.whitePieces &= mask;
+        }
+        this.allPieces &= mask;
     }
 
     updateOccupancies(): void {
@@ -63,125 +90,114 @@ export class Board {
         this.allPieces = 0n;
         this.currentGameState = 0;
         this.sideToMove = Piece.White;
-        this.gameStateHistory = [];
+        this.mailbox.fill(Piece.None);
+        this.historyIndex = 0;
     }
 
     getPieceOnSquare(square: number): Piece {
-        const squareMask = 1n << BigInt(square);
-        for (let piece = 1; piece < this.bitboards.length; piece++) {
-            if ((this.bitboards[piece]! & squareMask) !== 0n) {
-                return piece as Piece;
-            }
-        }
-        return Piece.None;
+        return this.mailbox[square]!;
     }
 
     makeMove(move: Move): void {
         const source = MoveUtils.getSourceSquare(move);
         const target = MoveUtils.getTargetSquare(move);
         const flag = MoveUtils.getMoveFlag(move);
-        const movingPiece = this.getPieceOnSquare(source);
-        const oldEnPassantFile = BoardUtils.getEnPassantFile(this);
-        const oldCastlingRights = BoardUtils.getCastlingRights(this);
+        const movingPiece = this.mailbox[source]!;
+        const oldEnPassantFile = (this.currentGameState >> 4) & 0b1111;
+        const oldCastlingRights = this.currentGameState & 0b1111;
 
-        //remove old zobrist state
-        this.zobristKey ^= Zobrist.castlingKeys[oldCastlingRights] || 0n;
-        this.zobristKey ^= Zobrist.enPassantKeys[oldEnPassantFile] || 0n;
+        // Remove old zobrist state
+        this.zobristKey ^= Zobrist.castlingKeys[oldCastlingRights]!;
+        if (oldEnPassantFile > 0) {
+            this.zobristKey ^= Zobrist.enPassantKeys[oldEnPassantFile - 1]!;
+        }
 
         // console.log(this.currentGameState);
-        this.gameStateHistory.push({
-            zobrist: this.zobristKey,
-            sideToMove: this.sideToMove,
-            state: this.currentGameState
-        });
+        // this.gameStateHistory.push({
+        //     zobrist: this.zobristKey,
+        //     sideToMove: this.sideToMove,
+        //     state: this.currentGameState
+        // });
+
+        const stateEntry = this.gameStateHistory[this.historyIndex]!;
+        stateEntry.zobrist = this.zobristKey;
+        stateEntry.sideToMove = this.sideToMove;
+        stateEntry.state = this.currentGameState;
+        this.historyIndex++;
         
         this.currentGameState &= ~(0b111111 << 8);
         this.currentGameState &= ~BoardUtils.EP_MASK;
 
-        let halfmoveClock = BoardUtils.getHalfmoveClock(this);
-
-        if (PieceUtils.getType(movingPiece) === Piece.Pawn || flag === MoveFlag.Capture || flag >= MoveFlag.PromotionToKnightCapture) {
-            halfmoveClock = 0;
-        } else {
-            halfmoveClock += 1;
-        }
-
-        this.currentGameState &= ~(0x3FFFF << 14);// clear halfmove clock
-        this.currentGameState |= (halfmoveClock << 14);// update halfmove clock
+        // Update halfmove clock
+        const pieceType = movingPiece & Piece.TypeMask;
+        const isResetMove = pieceType === Piece.Pawn || flag === MoveFlag.Capture || flag >= MoveFlag.PromotionToKnightCapture;
+        const halfmoveClock = isResetMove ? 0 : ((this.currentGameState >> 14) & 0x3FFFF) + 1;
+        this.currentGameState = (this.currentGameState & ~(0x3FFFF << 14)) | (halfmoveClock << 14);
 
         if (flag === MoveFlag.Capture || flag >= MoveFlag.PromotionToKnightCapture) {
-            const capturedPiece = this.getPieceOnSquare(target);
-            const capturedPieceType = PieceUtils.getType(capturedPiece);
-            this.currentGameState |= (capturedPieceType << 8);
+            const capturedPiece = this.mailbox[target]!;
+            this.currentGameState |= ((capturedPiece & Piece.TypeMask) << 8);
+            this.zobristKey ^= Zobrist.pieceKeys[capturedPiece]![target]!;
             this.popBit(capturedPiece, target);
-            this.zobristKey ^= Zobrist.pieceKeys[capturedPiece]![target] || 0n; // removing captured piece from zobrist
         }
 
         if (flag === MoveFlag.EnPassant) {
             const epCaptureSquare = (this.sideToMove === Piece.White) ? target - 8 : target + 8;
+            const capturedPawn = this.mailbox[epCaptureSquare]!;
             this.currentGameState |= (Piece.Pawn << 8);
-            this.popBit(PieceUtils.swapColor(movingPiece), epCaptureSquare);
-            this.zobristKey ^= Zobrist.pieceKeys[PieceUtils.swapColor(movingPiece)]![epCaptureSquare] || 0n; // removing captured pawn from zobrist
+            this.zobristKey ^= Zobrist.pieceKeys[capturedPawn]![epCaptureSquare]!;
+            this.popBit(capturedPawn, epCaptureSquare);
         }
         
 
-        this.zobristKey ^= Zobrist.pieceKeys[movingPiece]![source] || 0n; // remove piece from old square
+        this.zobristKey ^= Zobrist.pieceKeys[movingPiece]![source]!;
         this.popBit(movingPiece, source);
 
         let finalPiece = movingPiece;
-        switch (flag) {
-            case MoveFlag.PromotionToKnight:
-            case MoveFlag.PromotionToKnightCapture:
-                finalPiece = this.sideToMove | Piece.Knight;
-                break;
-            case MoveFlag.PromotionToBishop:
-            case MoveFlag.PromotionToBishopCapture:
-                finalPiece = this.sideToMove | Piece.Bishop;
-                break;
-            case MoveFlag.PromotionToRook:
-            case MoveFlag.PromotionToRookCapture:
-                finalPiece = this.sideToMove | Piece.Rook;
-                break;
-            case MoveFlag.PromotionToQueen:
-            case MoveFlag.PromotionToQueenCapture:
-                finalPiece = this.sideToMove | Piece.Queen;
-                break;
+        if (flag >= MoveFlag.PromotionToKnight) {
+            const promotionPieces = [Piece.Knight, Piece.Bishop, Piece.Rook, Piece.Queen];
+            const promotionIndex = (flag - MoveFlag.PromotionToKnight) & 0b11;
+            finalPiece = this.sideToMove | promotionPieces[promotionIndex]!;
         }
 
         this.setBit(finalPiece, target);
-        this.zobristKey ^= Zobrist.pieceKeys[finalPiece]![target] || 0n; // add piece to new square
+        this.zobristKey ^= Zobrist.pieceKeys[finalPiece]![target]!;
 
         if(flag === MoveFlag.KingCastle) {
-            this.popBit(this.sideToMove | Piece.Rook, target + 1);
-            this.setBit(this.sideToMove | Piece.Rook, target - 1);
-            this.zobristKey ^= Zobrist.pieceKeys[this.sideToMove | Piece.Rook]![target + 1] || 0n; // removing rook from old square
-            this.zobristKey ^= Zobrist.pieceKeys[this.sideToMove | Piece.Rook]![target - 1] || 0n; // adding rook to new square
+            const rookSource = target + 1;
+            const rookTarget = target - 1;
+            const rookPiece = this.sideToMove | Piece.Rook;
+            this.zobristKey ^= Zobrist.pieceKeys[rookPiece]![rookSource]!;
+            this.popBit(rookPiece, rookSource);
+            this.zobristKey ^= Zobrist.pieceKeys[rookPiece]![rookTarget]!;
+            this.setBit(rookPiece, rookTarget);
         } else if (flag === MoveFlag.QueenCastle) {
-            this.popBit(this.sideToMove | Piece.Rook, target - 2);
-            this.setBit(this.sideToMove | Piece.Rook, target + 1);
-            this.zobristKey ^= Zobrist.pieceKeys[this.sideToMove | Piece.Rook]![target - 2] || 0n; // removing rook from old square
-            this.zobristKey ^= Zobrist.pieceKeys[this.sideToMove | Piece.Rook]![target + 1] || 0n; // adding rook to new square
+            const rookSource = target - 2;
+            const rookTarget = target + 1;
+            const rookPiece = this.sideToMove | Piece.Rook;
+            this.zobristKey ^= Zobrist.pieceKeys[rookPiece]![rookSource]!;
+            this.popBit(rookPiece, rookSource);
+            this.zobristKey ^= Zobrist.pieceKeys[rookPiece]![rookTarget]!;
+            this.setBit(rookPiece, rookTarget);
         }
         
         if (flag === MoveFlag.DoublePawnPush) {
-            const enPassantFile = source % 8;
+            const enPassantFile = source & 7;
             this.currentGameState |= ((enPassantFile + 1) << 4);
-            this.zobristKey ^= Zobrist.enPassantKeys[enPassantFile] || 0n; // en passant file
+            this.zobristKey ^= Zobrist.enPassantKeys[enPassantFile]!;
         }
         
-        let updatedCastlingRights = BoardUtils.getCastlingRights(this);;
+        let updatedCastlingRights = oldCastlingRights;
 
-        if (PieceUtils.getType(movingPiece) === Piece.King) {
+        if (pieceType === Piece.King) {
             updatedCastlingRights &= (this.sideToMove === Piece.White) ? ~(Castling.WK | Castling.WQ) : ~(Castling.BK | Castling.BQ);
-        }
-        
-        if (PieceUtils.getType(movingPiece) === Piece.Rook) {
+        } else if (pieceType === Piece.Rook) {
             if (this.sideToMove === Piece.White) {
                 if (source === 0) updatedCastlingRights &= ~Castling.WQ;
-                if (source === 7) updatedCastlingRights &= ~Castling.WK;
+                else if (source === 7) updatedCastlingRights &= ~Castling.WK;
             } else {
                 if (source === 56) updatedCastlingRights &= ~Castling.BQ;
-                if (source === 63) updatedCastlingRights &= ~Castling.BK;
+                else if (source === 63) updatedCastlingRights &= ~Castling.BK;
             }
         }
     
@@ -194,13 +210,12 @@ export class Board {
         }
         
         if (oldCastlingRights !== updatedCastlingRights) {
-            this.zobristKey ^= Zobrist.castlingKeys[oldCastlingRights] || 0n; // remove
-            this.zobristKey ^= Zobrist.castlingKeys[updatedCastlingRights] || 0n; // add
+            this.zobristKey ^= Zobrist.castlingKeys[updatedCastlingRights]!;
+        } else {
+            this.zobristKey ^= Zobrist.castlingKeys[oldCastlingRights]!;
         }
 
         this.currentGameState = (this.currentGameState & ~0b1111) | updatedCastlingRights;
-        
-        this.updateOccupancies();
 
         this.zobristKey ^= Zobrist.sideKey;
         this.sideToMove ^= Piece.ColorMask;
@@ -216,20 +231,23 @@ export class Board {
         const capturedType = BoardUtils.getCapturedPieceType(this);
         const capturedPiece = capturedType !== Piece.None ? (capturedType | (this.sideToMove ^ Piece.ColorMask)) : Piece.None;
 
-        const previousState = this.gameStateHistory.pop()!;
+        this.historyIndex--;
+        const previousState = this.gameStateHistory[this.historyIndex]!;
         this.currentGameState = previousState.state;
         this.zobristKey = previousState.zobrist;
 
         if (flag === MoveFlag.KingCastle) {
-            this.popBit(this.sideToMove | Piece.Rook, target - 1);
-            this.setBit(this.sideToMove | Piece.Rook, target + 1);
+            const rook = this.sideToMove | Piece.Rook;
+            this.popBit(rook, target - 1);
+            this.setBit(rook, target + 1);
         }
         else if (flag === MoveFlag.QueenCastle) {
-            this.popBit(this.sideToMove | Piece.Rook, target + 1);
-            this.setBit(this.sideToMove | Piece.Rook, target - 2);
+            const rook = this.sideToMove | Piece.Rook;
+            this.popBit(rook, target + 1);
+            this.setBit(rook, target - 2);
         }
 
-        const pieceAtTarget = this.getPieceOnSquare(target);
+        const pieceAtTarget = this.mailbox[target]!;
         const movedPieceType = MoveUtils.isPromotion(move) ? Piece.Pawn | this.sideToMove : pieceAtTarget;
 
         this.popBit(pieceAtTarget, target);
@@ -242,9 +260,6 @@ export class Board {
         else if (capturedPiece !== Piece.None) {
             this.setBit(capturedPiece, target);
         }
-
-        this.updateOccupancies();
-        // console.log(this.currentGameState);
     }
 
     public isFiftyMoveRule(): boolean {

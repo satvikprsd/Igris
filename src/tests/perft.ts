@@ -1,6 +1,6 @@
 import { Board } from "../board/board";
 import { MoveGenerator } from "../move/move_generator";
-import { expect } from "chai";
+import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 const board = new Board();
@@ -115,7 +115,7 @@ if (!position || !depth) {
 
                         const expected = pos.table?.[depth];
                         if (expected !== undefined) {
-                            expect(nodes).to.equal(expected);
+                            assert.equal(nodes, expected);
                         }
                     });
                 }
@@ -139,7 +139,7 @@ else {
             console.log(position!.table[depth] === nodes ? "Perft test passed!" : "Perft test failed!");
             console.log(`Time taken: ${elapsedSeconds.toFixed(2)} seconds`);
             console.log(`NPS: ${nps.toLocaleString()}`);
-            expect(nodes).to.equal(position!.table[depth]);
+            assert.equal(nodes, position!.table[depth]);
         });
     });
 }

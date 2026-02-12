@@ -12,38 +12,80 @@ export interface TTEntry {
     score: number;
     nodeType: NodeType;
     bestMove: Move | null;
+    generation: number;
 }
 
 // for future me I don't fully understand how Transposition Table works, so please clean this code later.
 export class TranspositionTable {
-    private table: Map<bigint, TTEntry>;
-    public static readonly LOOKUP_FAILED = -100000
+    private table: TTEntry[];
+    private readonly size: number;
+    private generation: number = 0;
+    public static readonly LOOKUP_FAILED = -100000;
+    private static readonly EMPTY_ENTRY: TTEntry = {
+        zobrist: 0n,
+        depth: 0,
+        score: 0,
+        nodeType: NodeType.Exact,
+        bestMove: null,
+        generation: 0
+    };
     
-    constructor() {
-        this.table = new Map<bigint, TTEntry>();
-    }
-
-    get(zobrist: bigint): TTEntry | null {
-        return this.table.get(zobrist) || null;
-    }
-    
-    put(entry: TTEntry): void {
-        const existing = this.table.get(entry.zobrist);
-        if (!existing || entry.depth >= existing.depth) {
-            this.table.set(entry.zobrist, entry);
+    constructor(sizeMB: number = 256) {
+        const bytesPerEntry = 100;
+        this.size = Math.floor(sizeMB * 1024 * 1024 / bytesPerEntry);
+        this.table = new Array(this.size);
+        
+        for (let i = 0; i < this.size; i++) {
+            this.table[i] = { ...TranspositionTable.EMPTY_ENTRY };
         }
     }
 
+    private getIndex(zobrist: bigint): number {
+        return Number(zobrist % BigInt(this.size));
+    }
+
+    get(zobrist: bigint): TTEntry | null {
+        const index = this.getIndex(zobrist);
+        const entry = this.table[index]!;
+        
+        if (entry.zobrist === zobrist) {
+            return entry;
+        }
+        
+        return null;
+    }
+    
+    put(entry: TTEntry): void {
+        const index = this.getIndex(entry.zobrist);
+        const existing = this.table[index]!;
+        const shouldReplace = 
+            existing.zobrist === 0n ||
+            existing.zobrist === entry.zobrist ||
+            existing.generation < this.generation ||
+            (existing.generation === this.generation && entry.depth >= existing.depth);
+        
+        if (shouldReplace) {
+            this.table[index] = entry;
+        }
+    }
 
     clear(): void {
-        this.table.clear();
+        for (let i = 0; i < this.size; i++) {
+            this.table[i] = { ...TranspositionTable.EMPTY_ENTRY };
+        }
+        this.generation = 0;
+    }
+    
+    newSearch(): void {
+        this.generation++;
     }
 
     lookupEvaluation(zobrist: bigint, depth: number, plyFromRoot: number, alpha: number, beta: number): number {
-        const entry = this.table.get(zobrist);
+        const index = this.getIndex(zobrist);
+        const entry = this.table[index]!;
         
         // Entry not found
-        if (!entry) {
+        if (entry.zobrist !== zobrist) {
             return TranspositionTable.LOOKUP_FAILED;
         }
         
@@ -61,10 +103,30 @@ export class TranspositionTable {
         return TranspositionTable.LOOKUP_FAILED;
     }
 
-    storeEvaluation(zobrist: bigint, depth: number, plyFromRoot: number,score: number, nodeType: NodeType, bestMove: Move | null): void {
+    storeEvaluation(zobrist: bigint, depth: number, plyFromRoot: number, score: number, nodeType: NodeType, bestMove: Move | null): void {
         const adjustedScore = this.correctMateScoreForStorage(score, plyFromRoot);
 
-        this.put({zobrist, depth, score: adjustedScore, nodeType, bestMove});
+        this.put({
+            zobrist, 
+            depth, 
+            score: adjustedScore, 
+            nodeType, 
+            bestMove,
+            generation: this.generation
+        });
+    }
+    
+    getBestMove(zobrist: bigint): Move | null {
+        const entry = this.get(zobrist);
+        return entry?.bestMove || null;
+    }
+    
+    getTableSize(): number {
+        return this.size;
+    }
+    
+    getGeneration(): number {
+        return this.generation;
     }
 
     private correctRetrievedMateScore(score: number, plyFromRoot: number): number {

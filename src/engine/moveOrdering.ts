@@ -61,6 +61,15 @@ export class MoveOrdering {
             moveScoreGuess += this.getPieceValue(MoveUtils.getPromotionPieceType(move));
         }
 
+        //passed pawns
+        if (movePieceType === Piece.Pawn) {
+            if (this.isPassedPawn(board, to)) {
+                const rank = to >> 3;
+                const advancement = board.sideToMove === Piece.White ? 7 - rank : rank;
+                moveScoreGuess += advancement * advancement * 15;
+            }
+        }
+
         if ((opponentPawnAttacks & (1n << BigInt(to))) !== 0n) {
             moveScoreGuess -= this.getPieceValue(movePieceType);
         }
@@ -70,6 +79,34 @@ export class MoveOrdering {
         }
         
         return moveScoreGuess
+    }
+
+    private static isPassedPawn(board: Board, square: number): boolean {
+        const file = square % 8;
+        const rank = Math.floor(square / 8);
+        
+        const opponentColor = board.sideToMove ^ Piece.ColorMask;
+        const opponentPawns = board.bitboards[Piece.Pawn | opponentColor] || 0n;
+        
+        let maskSquares = 0n;
+        
+        if (board.sideToMove === Piece.White) {
+            // White pawns move up (decreasing rank)
+            for (let r = rank - 1; r >= 0; r--) {
+                if (file > 0) maskSquares |= 1n << BigInt(r * 8 + file - 1);
+                maskSquares |= 1n << BigInt(r * 8 + file);
+                if (file < 7) maskSquares |= 1n << BigInt(r * 8 + file + 1);
+            }
+        } else {
+            // Black pawns move down (increasing rank)
+            for (let r = rank + 1; r < 8; r++) {
+                if (file > 0) maskSquares |= 1n << BigInt(r * 8 + file - 1);
+                maskSquares |= 1n << BigInt(r * 8 + file);
+                if (file < 7) maskSquares |= 1n << BigInt(r * 8 + file + 1);
+            }
+        }
+        
+        return (opponentPawns & maskSquares) === 0n;
     }
 
     private static getPieceValue(piece: Piece): number {
@@ -82,7 +119,7 @@ export class MoveOrdering {
         const occupied = board.allPieces;
 
         const opponentPawns = board.bitboards[Piece.Pawn | color] || 0n;    
-        protectedSquares |= board.sideToMove === Piece.White ? Attacks.blackPawnAttacksFromBitboard(opponentPawns) : Attacks.whitePawnAttacksFromBitboard(opponentPawns);
+        protectedSquares |= color === Piece.White ? Attacks.blackPawnAttacksFromBitboard(opponentPawns) : Attacks.blackPawnAttacksFromBitboard(opponentPawns);
 
         let opponentKnights = board.bitboards[Piece.Knight | color] || 0n;
         while (opponentKnights !== 0n) {

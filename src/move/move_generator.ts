@@ -6,50 +6,60 @@ import { Move, MoveFlag, MoveUtils, squareToString } from "./move";
 
 export class MoveGenerator {
     private board: Board;
+    private moveBuffer: number[] = new Array(256);
+    private moveCount: number = 0;
 
     constructor(board: Board) {
         this.board = board;
     }
 
     public generateLegalMoves(color: number, onlyCaptures?: boolean): Move[] {
-        const pseudoLegalMoves = this.generatePseudoLegalMoves(color);
-        const legalMoves: Move[] = [];
-
-        for (const move of pseudoLegalMoves) {
+        this.moveCount = 0;
+        this.generatePseudoLegalMoves(color);
+    
+        let legalCount = 0;
+        for (let i = 0; i < this.moveCount; i++) {
+            const move = this.moveBuffer[i]!;
+            
             if (onlyCaptures) {
                 const flag = MoveUtils.getMoveFlag(move);
                 const isCapture = flag === MoveFlag.Capture || flag === MoveFlag.EnPassant || flag >= MoveFlag.PromotionToKnightCapture;
+                if (!isCapture) continue;
+                
                 const capturedPieceType = this.board.getPieceOnSquare(MoveUtils.getTargetSquare(move));
                 const movePieceType = this.board.getPieceOnSquare(MoveUtils.getSourceSquare(move));
+                const isGoodCapture = (PieceUtils.getType(capturedPieceType) >= Piece.Queen) || 
+                    (Evaluation.pieceValues[PieceUtils.getType(capturedPieceType)]! > Evaluation.pieceValues[PieceUtils.getType(movePieceType)]!);
+                if (!isGoodCapture) continue;
+            }
 
-                const isGoodCapture = (PieceUtils.getType(capturedPieceType) >= Piece.Queen) || (Evaluation.pieceValues[PieceUtils.getType(capturedPieceType)]! > Evaluation.pieceValues[PieceUtils.getType(movePieceType)]!);
-                if (!isCapture || !isGoodCapture) continue;
-            }
             this.board.makeMove(move);
-            if (!this.isSquareAttacked(this.getKingSquare(color), color ^ Piece.ColorMask)) {
-                legalMoves.push(move);
-            }
+            const isLegal = !this.isSquareAttacked(this.getKingSquare(color), color ^ Piece.ColorMask);
             this.board.unmakeMove(move);
+            
+            if (isLegal) {
+                this.moveBuffer[legalCount++] = move;
+            }
         }
 
-        return legalMoves;
+        return this.moveBuffer.slice(0, legalCount);
     }
 
-    public generatePseudoLegalMoves(color: number): Move[] {
-        const moves: Move[] = [];
+    private generatePseudoLegalMoves(color: number): void {
+        this.generateKingMoves(color);
+        this.generateKnightMoves(color);
+        this.generatePawnMoves(color);
+        this.generateBishopMoves(color);
+        this.generateRookMoves(color);
+        this.generateQueenMoves(color);
+        this.generateCastleMoves(color);
+    }
     
-        this.generateKingMoves(moves, color);
-        this.generateKnightMoves(moves, color);
-        this.generatePawnMoves(moves, color);
-        this.generateBishopMoves(moves, color);
-        this.generateRookMoves(moves, color);
-        this.generateQueenMoves(moves, color);
-        this.generateCastleMoves(moves, color);
-
-        return moves;
+    private addMove(move: number): void {
+        this.moveBuffer[this.moveCount++] = move;
     }
 
-    private generatePawnMoves(moves: Move[], color: number): void {
+    private generatePawnMoves(color: number): void {
         const pawnBitboard = this.board.bitboards[color | Piece.Pawn];
         const friendlyPieces = (color === Piece.White) ? this.board.whitePieces : this.board.blackPieces;
         const enemyPieces = (color === Piece.White) ? this.board.blackPieces : this.board.whitePieces;
@@ -57,41 +67,37 @@ export class MoveGenerator {
         const direction = (color === Piece.White) ? 8 : -8;
         const startingRank = (color === Piece.White) ? 1 : 6;
         const promotionRank = (color === Piece.White) ? 6 : 1;
+        
+        const enPassantSquare = BoardUtils.getEnPassantSquare(this.board);
 
-        let pawns = pawnBitboard;
+        let pawns = pawnBitboard!;
 
         while (pawns !== 0n) {
-            const square = Attacks.getLSB(pawns!);
-            pawns = Attacks.popLSB(pawns!);
+            const square = Attacks.getLSB(pawns);
+            pawns = Attacks.popLSB(pawns);
 
             const rank = square >> 3;
-            const file = square & 7;
             const targetSquare = square + direction;
             const targetMask = 1n << BigInt(targetSquare);
 
             // single push
             if (targetSquare >= 0 && targetSquare < 64 && (emptySquares & targetMask) !== 0n) {
                 if (rank === promotionRank) {
-                    for (let promoFlag = MoveFlag.PromotionToKnight; promoFlag <= MoveFlag.PromotionToQueen; promoFlag++) {
-                        const move = MoveUtils.encode(square, targetSquare, promoFlag);
-                        moves.push(move);
-                    }
-                }
-                else {
-                    const move = MoveUtils.encode(square, targetSquare, MoveFlag.Quiet);
-                    moves.push(move);
+                    this.addMove(MoveUtils.encode(square, targetSquare, MoveFlag.PromotionToKnight));
+                    this.addMove(MoveUtils.encode(square, targetSquare, MoveFlag.PromotionToBishop));
+                    this.addMove(MoveUtils.encode(square, targetSquare, MoveFlag.PromotionToRook));
+                    this.addMove(MoveUtils.encode(square, targetSquare, MoveFlag.PromotionToQueen));
+                } else {
+                    this.addMove(MoveUtils.encode(square, targetSquare, MoveFlag.Quiet));
                 }
 
                 // double push
                 if (rank === startingRank) {
                     const doublePushSquare = square + 2 * direction;
                     const doublePushMask = 1n << BigInt(doublePushSquare);
-                    const betweenSquare = square + direction;
-                    const betweenMask = 1n << BigInt(betweenSquare);
 
-                    if ((emptySquares & doublePushMask) !== 0n && (emptySquares & betweenMask) !== 0n) {
-                        const move = MoveUtils.encode(square, doublePushSquare, MoveFlag.DoublePawnPush);
-                        moves.push(move);
+                    if ((emptySquares & doublePushMask) !== 0n) {
+                        this.addMove(MoveUtils.encode(square, doublePushSquare, MoveFlag.DoublePawnPush));
                     }
                 }
             }
@@ -105,39 +111,35 @@ export class MoveGenerator {
                 validCaptures = Attacks.popLSB(validCaptures);
 
                 if (rank === promotionRank) {
-                    for (let promoFlag = MoveFlag.PromotionToKnightCapture; promoFlag <= MoveFlag.PromotionToQueenCapture; promoFlag++) {
-                        const move = MoveUtils.encode(square, captureSquare, promoFlag);
-                        moves.push(move);
-                    }
-                }
-                else {
-                    const move = MoveUtils.encode(square, captureSquare, MoveFlag.Capture);
-                    moves.push(move);
+                    this.addMove(MoveUtils.encode(square, captureSquare, MoveFlag.PromotionToKnightCapture));
+                    this.addMove(MoveUtils.encode(square, captureSquare, MoveFlag.PromotionToBishopCapture));
+                    this.addMove(MoveUtils.encode(square, captureSquare, MoveFlag.PromotionToRookCapture));
+                    this.addMove(MoveUtils.encode(square, captureSquare, MoveFlag.PromotionToQueenCapture));
+                } else {
+                    this.addMove(MoveUtils.encode(square, captureSquare, MoveFlag.Capture));
                 }
             }
 
             // en passant
-            const enPassantSquare = BoardUtils.getEnPassantSquare(this.board);
             if (enPassantSquare !== -1) {
                 const enPassantMask = 1n << BigInt(enPassantSquare);
                 if ((attacks & enPassantMask) !== 0n) {
-                    const move = MoveUtils.encode(square, enPassantSquare, MoveFlag.EnPassant);
-                    moves.push(move);
+                    this.addMove(MoveUtils.encode(square, enPassantSquare, MoveFlag.EnPassant));
                 }
             }
         }
     }
 
-    private generateKnightMoves(moves: Move[], color: number): void {
+    private generateKnightMoves(color: number): void {
         const knightBitboard = this.board.bitboards[color | Piece.Knight];
         const friendlyPieces = (color === Piece.White) ? this.board.whitePieces : this.board.blackPieces;
         const enemyPieces = (color === Piece.White) ? this.board.blackPieces : this.board.whitePieces;
 
-        let knights = knightBitboard;
+        let knights = knightBitboard!;
 
         while (knights !== 0n) {
-            const square = Attacks.getLSB(knights!);
-            knights = Attacks.popLSB(knights!);
+            const square = Attacks.getLSB(knights);
+            knights = Attacks.popLSB(knights);
             
             const attacks = Attacks.knightAttacks[square]! & ~friendlyPieces;
             let validMoves = attacks;
@@ -146,22 +148,21 @@ export class MoveGenerator {
                 const targetSquare = Attacks.getLSB(validMoves);
                 validMoves = Attacks.popLSB(validMoves);
                 
-                const isCapture = (enemyPieces & (1n << BigInt(targetSquare))) !== 0n;
-                const flag = isCapture ? MoveFlag.Capture : MoveFlag.Quiet;
-                const move = MoveUtils.encode(square, targetSquare, flag);
-                moves.push(move);
+                const targetBit = 1n << BigInt(targetSquare);
+                const flag = (enemyPieces & targetBit) !== 0n ? MoveFlag.Capture : MoveFlag.Quiet;
+                this.addMove(MoveUtils.encode(square, targetSquare, flag));
             }
         }
     }
 
-    private generateKingMoves(moves: Move[], color: number): void {
-        const kingBitboard = this.board.bitboards[color | Piece.King];
+    private generateKingMoves(color: number): void {
+        const kingBitboard = this.board.bitboards[color | Piece.King]!;
         const friendlyPieces = (color === Piece.White) ? this.board.whitePieces : this.board.blackPieces;
         const enemyPieces = (color === Piece.White) ? this.board.blackPieces : this.board.whitePieces;
 
         if (kingBitboard === 0n) return;
 
-        const square = Attacks.getLSB(kingBitboard!);
+        const square = Attacks.getLSB(kingBitboard);
         const attacks = Attacks.kingAttacks[square]! & ~friendlyPieces;
         let validMoves = attacks;
 
@@ -169,86 +170,74 @@ export class MoveGenerator {
             const targetSquare = Attacks.getLSB(validMoves);
             validMoves = Attacks.popLSB(validMoves);
 
-            const isCapture = (enemyPieces & (1n << BigInt(targetSquare))) !== 0n;
-            const flag = isCapture ? MoveFlag.Capture : MoveFlag.Quiet;
-            
-            const move = MoveUtils.encode(square, targetSquare, flag);
-            moves.push(move);
+            const targetBit = 1n << BigInt(targetSquare);
+            const flag = (enemyPieces & targetBit) !== 0n ? MoveFlag.Capture : MoveFlag.Quiet;
+            this.addMove(MoveUtils.encode(square, targetSquare, flag));
         }
     }
 
-    private generateBishopMoves(moves: Move[], color: number): void {
-        this.generateSlidingMoves(moves, color, Piece.Bishop);
+    private generateBishopMoves(color: number): void {
+        this.generateSlidingMoves(color, Piece.Bishop);
     }
 
-    private generateRookMoves(moves: Move[], color: number): void {
-        this.generateSlidingMoves(moves, color, Piece.Rook);
+    private generateRookMoves(color: number): void {
+        this.generateSlidingMoves(color, Piece.Rook);
     }
 
-    private generateQueenMoves(moves: Move[], color: number): void {
-        this.generateSlidingMoves(moves, color, Piece.Queen);
+    private generateQueenMoves(color: number): void {
+        this.generateSlidingMoves(color, Piece.Queen);
     }
 
-    private generateSlidingMoves(moves: Move[], color: number, pieceType: Piece): void {
+    private generateSlidingMoves(color: number, pieceType: number): void {
         const pieceBitboard = this.board.bitboards[color | pieceType];
         const friendlyPieces = (color === Piece.White) ? this.board.whitePieces : this.board.blackPieces;
         const enemyPieces = (color === Piece.White) ? this.board.blackPieces : this.board.whitePieces;
+        
+        const occupied = this.board.allPieces;
 
-        let pieces = pieceBitboard;
+        let pieces = pieceBitboard!;
 
         while (pieces !== 0n) {
-            const square = Attacks.getLSB(pieces!);
-            pieces = Attacks.popLSB(pieces!);
-            
-            let attacks: bigint;
-            switch (pieceType) {
-                case Piece.Bishop:
-                    attacks = Attacks.getBishopAttacks(square, this.board.allPieces);
-                    break;
-                case Piece.Rook:
-                    attacks = Attacks.getRookAttacks(square, this.board.allPieces);
-                    break;
-                case Piece.Queen:
-                    attacks = Attacks.getQueenAttacks(square, this.board.allPieces);
-                    break;
-                default:
-                    attacks = 0n;
-            }
+            const square = Attacks.getLSB(pieces);
+            pieces = Attacks.popLSB(pieces);
 
+            let attacks: bigint;
+            
+            if (pieceType === Piece.Bishop) {
+                attacks = Attacks.getBishopAttacks(square, occupied);
+            } else if (pieceType === Piece.Rook) {
+                attacks = Attacks.getRookAttacks(square, occupied);
+            } else { // Queen
+                attacks = Attacks.getQueenAttacks(square, occupied);
+            }
+            
             let validMoves = attacks & ~friendlyPieces;
 
             while (validMoves !== 0n) {
                 const targetSquare = Attacks.getLSB(validMoves);
                 validMoves = Attacks.popLSB(validMoves);
                 
-                const isCapture = (enemyPieces & (1n << BigInt(targetSquare))) !== 0n;
-                const flag = isCapture ? MoveFlag.Capture : MoveFlag.Quiet;
-                const move = MoveUtils.encode(square, targetSquare, flag);
-                moves.push(move);
+                const targetBit = 1n << BigInt(targetSquare);
+                const flag = (enemyPieces & targetBit) !== 0n ? MoveFlag.Capture : MoveFlag.Quiet;
+                this.addMove(MoveUtils.encode(square, targetSquare, flag));
             }
         }
-
     }
 
-    private generateCastleMoves(moves: Move[], color: number): void {
-        const castlingRights = BoardUtils.getCastlingRights(this.board);
+    private generateCastleMoves(color: number): void {
         const kingSquare = this.getKingSquare(color);
-
-        if (kingSquare == -1) return;
-
-        // check
         if (this.isSquareAttacked(kingSquare, color ^ Piece.ColorMask)) {
             return;
         }
+
+        const castlingRights = BoardUtils.getCastlingRights(this.board);
 
         if (color === Piece.White) {
             // kingside e1 to g1
             if ((castlingRights & Castling.WK) !== 0) { // existing right
                 if ((this.board.allPieces & 0x60n) === 0n) { // squares between empty
-
-                    if (!this.isSquareAttacked(5, Piece.Black) && !this.isSquareAttacked(6, Piece.Black)) { // squares not attacked
-                        const move = MoveUtils.encode(4, 6, MoveFlag.KingCastle);
-                        moves.push(move);
+                    if (!this.isSquareAttacked(5, Piece.Black) && !this.isSquareAttacked(6, Piece.Black)) {
+                        this.addMove(MoveUtils.encode(4, 6, MoveFlag.KingCastle));
                     }
                 }
             }
@@ -256,10 +245,8 @@ export class MoveGenerator {
             // queenside e1 to c1
             if ((castlingRights & Castling.WQ) !== 0) { // existing right
                 if ((this.board.allPieces & 0xEn) === 0n) { // squares between empty
-
-                    if (!this.isSquareAttacked(3, Piece.Black) && !this.isSquareAttacked(2, Piece.Black)) { // squares not attacked
-                        const move = MoveUtils.encode(4, 2, MoveFlag.QueenCastle);
-                        moves.push(move);
+                    if (!this.isSquareAttacked(3, Piece.Black) && !this.isSquareAttacked(2, Piece.Black)) {
+                        this.addMove(MoveUtils.encode(4, 2, MoveFlag.QueenCastle));
                     }
                 }
             }
@@ -267,10 +254,8 @@ export class MoveGenerator {
             // kingside e8 to g8
             if ((castlingRights & Castling.BK) !== 0) { // existing right
                 if ((this.board.allPieces & 0x6000000000000000n) === 0n) { // squares between empty
-                    
-                    if (!this.isSquareAttacked(61, Piece.White) && !this.isSquareAttacked(62, Piece.White)) { // squares not attacked
-                        const move = MoveUtils.encode(60, 62, MoveFlag.KingCastle);
-                        moves.push(move);
+                    if (!this.isSquareAttacked(61, Piece.White) && !this.isSquareAttacked(62, Piece.White)) {
+                        this.addMove(MoveUtils.encode(60, 62, MoveFlag.KingCastle));
                     }
                 }
             }
@@ -278,29 +263,25 @@ export class MoveGenerator {
             // queenside e8 to c8
             if ((castlingRights & Castling.BQ) !== 0) { // existing right
                 if ((this.board.allPieces & 0xE00000000000000n) === 0n) { // squares between empty
-
-                    if (!this.isSquareAttacked(59, Piece.White) && !this.isSquareAttacked(58, Piece.White)) { // squares not attacked
-                        const move = MoveUtils.encode(60, 58, MoveFlag.QueenCastle);
-                        moves.push(move);
+                    if (!this.isSquareAttacked(59, Piece.White) && !this.isSquareAttacked(58, Piece.White)) {
+                        this.addMove(MoveUtils.encode(60, 58, MoveFlag.QueenCastle));
                     }
                 }
             }
         }
-
     }
-
 
     private getKingSquare(color: number): number {
         const kingBitboard = this.board.bitboards[color | Piece.King]!;
         if (kingBitboard === 0n) return -1;
-
         return Attacks.getLSB(kingBitboard);
     }
 
     private isSquareAttacked(square: number, byColor: number): boolean {
         if (square < 0 || square > 63) {
-            throw new Error("please noooo");
+            throw new Error("Invalid square");
         }
+        
         // pawn attacks
         const pawnAttacks = byColor === Piece.White ? Attacks.blackPawnAttacks[square]! : Attacks.whitePawnAttacks[square]!;
         if ((pawnAttacks & this.board.bitboards[byColor | Piece.Pawn]!) !== 0n) {
@@ -317,14 +298,16 @@ export class MoveGenerator {
             return true;
         }
 
+        const occupied = this.board.allPieces;
+
         //bishop/queen attacks
-        const bishopAttacks = Attacks.getBishopAttacks(square, this.board.allPieces);
+        const bishopAttacks = Attacks.getBishopAttacks(square, occupied);
         if ((bishopAttacks & (this.board.bitboards[byColor | Piece.Bishop]! | this.board.bitboards[byColor | Piece.Queen]!)) !== 0n) {
             return true;
         }
 
         //rook/queen attacks
-        const rookAttacks = Attacks.getRookAttacks(square, this.board.allPieces);
+        const rookAttacks = Attacks.getRookAttacks(square, occupied);
         if ((rookAttacks & (this.board.bitboards[byColor | Piece.Rook]! | this.board.bitboards[byColor | Piece.Queen]!)) !== 0n) {
             return true;
         }
@@ -371,14 +354,15 @@ export class MoveGenerator {
     public generateAttacksForSide(color: number): bigint {
         let attacks = 0n;
         const friendlyPieces = (color === Piece.White) ? this.board.whitePieces : this.board.blackPieces;
+        const occupied = this.board.allPieces;
 
         for (let pieceType = Piece.Pawn; pieceType <= Piece.King; pieceType++) {
             const pieceBitboard = this.board.bitboards[color | pieceType];
-            let pieces = pieceBitboard;
+            let pieces = pieceBitboard!;
 
             while (pieces !== 0n) {
-                const square = Attacks.getLSB(pieces!);
-                pieces = Attacks.popLSB(pieces!);
+                const square = Attacks.getLSB(pieces);
+                pieces = Attacks.popLSB(pieces);
 
                 let pieceAttacks: bigint;
                 switch (pieceType) {
@@ -389,13 +373,13 @@ export class MoveGenerator {
                         pieceAttacks = Attacks.knightAttacks[square]!;
                         break;
                     case Piece.Bishop:
-                        pieceAttacks = Attacks.getBishopAttacks(square, this.board.allPieces);
+                        pieceAttacks = Attacks.getBishopAttacks(square, occupied);
                         break;
                     case Piece.Rook:
-                        pieceAttacks = Attacks.getRookAttacks(square, this.board.allPieces);
+                        pieceAttacks = Attacks.getRookAttacks(square, occupied);
                         break;
                     case Piece.Queen:
-                        pieceAttacks = Attacks.getQueenAttacks(square, this.board.allPieces);
+                        pieceAttacks = Attacks.getQueenAttacks(square, occupied);
                         break;
                     case Piece.King:
                         pieceAttacks = Attacks.kingAttacks[square]!;
@@ -415,10 +399,10 @@ export class MoveGenerator {
         let attacks = 0n;
         const pawnBitboard = this.board.bitboards[color | Piece.Pawn];
         
-        let pawns = pawnBitboard;
+        let pawns = pawnBitboard!;
         while (pawns !== 0n) {
-            const square = Attacks.getLSB(pawns!);
-            pawns = Attacks.popLSB(pawns!);
+            const square = Attacks.getLSB(pawns);
+            pawns = Attacks.popLSB(pawns);
             
             const pawnAttacks = (color === Piece.White) ? Attacks.whitePawnAttacks[square]! : Attacks.blackPawnAttacks[square]!;
             attacks |= pawnAttacks;

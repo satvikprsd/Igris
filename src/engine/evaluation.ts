@@ -234,11 +234,11 @@ export class Evaluation {
             const square = this.getLSBIndex(tempPawnBB);
             const file = square & 7;
             const rank = square >> 3;
-            
+            // console.log(square, file, rank, squareToString(square));
             //passed pawn
             const passedPawnMask = this.getPassedPawnMask(square, isWhite);
             if ((opponentPawnBB & passedPawnMask) === 0n) {
-                const numSquaresFromPromotion = isWhite ? rank : 7 - rank;
+                const numSquaresFromPromotion = isWhite ? 7 - rank : rank;
                 score += this.passedPawnBonuses[numSquaresFromPromotion] || 0;
             }
             
@@ -390,21 +390,32 @@ export class Evaluation {
     }
 
     private static getPassedPawnMask(square: number, isWhite: boolean): bigint {
-        const file = square & 7;
-        const rank = square >> 3;
+        const file = square & 7;        // 0–7
+        const rank = square >> 3;       // 0–7
         let mask = 0n;
-        
-        const startRank = isWhite ? 0 : rank + 1;
-        const endRank = isWhite ? rank : 8;
-        
-        for (let r = startRank; r < endRank; r++) {
-            for (let f = Math.max(0, file - 1); f <= Math.min(7, file + 1); f++) {
-                mask |= 1n << BigInt(r * 8 + f);
+
+        const fileStart = Math.max(0, file - 1);
+        const fileEnd   = Math.min(7, file + 1);
+
+        if (isWhite) {
+            //White
+            for (let r = rank + 1; r < 8; r++) {
+                for (let f = fileStart; f <= fileEnd; f++) {
+                    mask |= 1n << BigInt(r * 8 + f);
+                }
+            }
+        } else {
+            //Black
+            for (let r = rank - 1; r >= 0; r--) {
+                for (let f = fileStart; f <= fileEnd; f++) {
+                    mask |= 1n << BigInt(r * 8 + f);
+                }
             }
         }
-        
+
         return mask;
     }
+
 
     private static getAdjacentFilesMask(file: number): bigint {
         let mask = 0n;
@@ -434,7 +445,7 @@ export class Evaluation {
         const rank = kingSquare >> 3;
         const squares: number[] = [];
         
-        const shieldRank = isWhite ? rank - 1 : rank + 1;
+        const shieldRank = isWhite ? rank + 1 : rank - 1;
         
         if (shieldRank >= 0 && shieldRank < 8) {
             for (let f = Math.max(0, file - 1); f <= Math.min(7, file + 1); f++) {

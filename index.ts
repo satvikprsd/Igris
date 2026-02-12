@@ -92,7 +92,7 @@ app.post('/api/bot-move', (req, res) => {
         return res.json({ message: "Game over" });
     }
     
-    const timePerMove = 2000;
+    const timePerMove = 5000;
     const [bestMove, bestEvaluation] = search.search(timePerMove)!;
 
     if (!bestMove) {

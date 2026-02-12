@@ -65,7 +65,7 @@ export class MoveOrdering {
         if (movePieceType === Piece.Pawn) {
             if (this.isPassedPawn(board, to)) {
                 const rank = to >> 3;
-                const advancement = board.sideToMove === Piece.White ? 7 - rank : rank;
+                const advancement = board.sideToMove === Piece.White ? rank : 7 - rank;
                 moveScoreGuess += advancement * advancement * 15;
             }
         }
@@ -91,15 +91,15 @@ export class MoveOrdering {
         let maskSquares = 0n;
         
         if (board.sideToMove === Piece.White) {
-            // White pawns move up (decreasing rank)
-            for (let r = rank - 1; r >= 0; r--) {
+            // White pawns move up (increasing rank)
+            for (let r = rank + 1; r < 8; r++) {
                 if (file > 0) maskSquares |= 1n << BigInt(r * 8 + file - 1);
                 maskSquares |= 1n << BigInt(r * 8 + file);
                 if (file < 7) maskSquares |= 1n << BigInt(r * 8 + file + 1);
             }
         } else {
-            // Black pawns move down (increasing rank)
-            for (let r = rank + 1; r < 8; r++) {
+            // Black pawns move down (decreasing rank)   
+            for (let r = rank - 1; r >= 0; r--) {
                 if (file > 0) maskSquares |= 1n << BigInt(r * 8 + file - 1);
                 maskSquares |= 1n << BigInt(r * 8 + file);
                 if (file < 7) maskSquares |= 1n << BigInt(r * 8 + file + 1);

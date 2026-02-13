@@ -2,6 +2,7 @@ import { Board } from "../board/board";
 import { Piece } from "../board/piece";
 import { Move, MoveFlag, MoveUtils } from "../move/move";
 import { MoveGenerator } from "../move/move_generator";
+import { pickBookMove } from "../utils/openingBook";
 import { Evaluation } from "./evaluation";
 import { MoveOrdering } from "./moveOrdering";
 import { NodeType, TranspositionTable } from "./transpositionTable";
@@ -43,7 +44,15 @@ export class Search {
         // console.log("Position:");
         // this.board.printBoard();
         // console.log(`Side to move: ${this.board.sideToMove === Piece.White ? 'White' : 'Black'}`);
-        
+
+
+        //check the opening Book
+        const move = pickBookMove(this.board.zobristKey);
+        if (move !== null) {
+            console.timeEnd("Search Time");
+            console.log("Book move found:", MoveUtils.moveToString(move));
+            return [move, 0];
+        }
         let moves = this.moveGenerator.generateLegalMoves(this.board.sideToMove);
         // console.log(`Legal moves: ${moves.map(m => MoveUtils.moveToString(m)).join(', ')}`);
         

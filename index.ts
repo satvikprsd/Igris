@@ -21,7 +21,6 @@ const board = new Board();
 const moveGenerator = new MoveGenerator(board);
 const search = new Search(board);
 const moves: number[] = [];
-const pgnMoves: string[] = [];
 const initialFen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 let playerColor = Piece.White;
 
@@ -41,7 +40,6 @@ app.post('/api/reset', (req, res) => {
     board.loadPositionFromFen(initialFen);
     playerColor = Piece.White;
     moves.length = 0;
-    pgnMoves.length = 0;
     
     res.json({ message: "Board reset" });
 });
@@ -80,19 +78,12 @@ app.post('/api/test-move', (req, res) => {
 app.post('/api/bot-move', (req, res) => {
     const legalMoves = moveGenerator.generateLegalMoves(board.sideToMove);
     if (legalMoves.length === 0) {
-        let finalPGN = ''
-        pgnMoves.map((move, index) => {
-            if (index % 2 === 0) {
-                finalPGN += `${Math.floor(index/2) + 1}. ${move} `;
-            } else {
-                finalPGN += `${move} `;
-            }
-        })
+        const finalPGN = MoveUtils.generatePGN(moves, initialFen);
         console.log("Game over. Final PGN:", `[FEN "${initialFen}"] \n ${finalPGN}`);
         return res.json({ message: "Game over" });
     }
     
-    const timePerMove = 5000;
+    const timePerMove = 10000;
     const [bestMove, bestEvaluation] = search.search(timePerMove)!;
 
     if (!bestMove) {
@@ -103,11 +94,9 @@ app.post('/api/bot-move', (req, res) => {
 
     board.makeMove(bestMove);
     moves.push(bestMove);
-    const pgnMove = MoveUtils.moveToPGN(bestMove, board);
-    pgnMoves.push(pgnMove);
 
     res.json({
-        move: pgnMove,
+        move: moveString,
         evaluation: bestEvaluation * (board.sideToMove === Piece.White ? -1 : 1)/100,
         turn: board.sideToMove === Piece.White ? "White" : "Black"
     });

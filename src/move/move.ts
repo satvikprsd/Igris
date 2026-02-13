@@ -1,5 +1,6 @@
 import { Board } from "../board/board";
 import { Piece, PieceUtils } from "../board/piece";
+import { MoveGenerator } from "./move_generator";
 
 export type Move = number;
 // 0000 000000 000000
@@ -80,42 +81,115 @@ export namespace MoveUtils {
         return squareToString(source) + squareToString(target);
     }
 
-    export function moveToPGN(move: Move, board: Board): string {
-        const source = getSourceSquare(move);
-        const target = getTargetSquare(move);
-        const flag = getMoveFlag(move);
-        const movePiece = board.getPieceOnSquare(target);
-        let pgnMove = "";
+    export function moveToSAN(move: Move, board: Board, moveGenerator: MoveGenerator): string {
+        const source = MoveUtils.getSourceSquare(move);
+        const target = MoveUtils.getTargetSquare(move);
+        const flag = MoveUtils.getMoveFlag(move);
 
-        if (flag === MoveFlag.KingCastle) {
-            return "O-O";
-        } else if (flag === MoveFlag.QueenCastle) {
-            return "O-O-O";
-        }
+        const movingPiece = board.getPieceOnSquare(source);
+        const pieceType = PieceUtils.getType(movingPiece);
 
-        const movePieceType = PieceUtils.getType(movePiece);
-        
-        if (movePieceType !== Piece.Pawn && !MoveUtils.isPromotion(move)) {
-            pgnMove += PieceUtils.pieceTypeToChar(movePieceType);
-            pgnMove += squareToString(source)[0];
-        }
+        if (flag === MoveFlag.KingCastle) return "O-O";
+        if (flag === MoveFlag.QueenCastle) return "O-O-O";
 
-        const isCapture = flag === MoveFlag.Capture || flag === MoveFlag.EnPassant || flag >= MoveFlag.PromotionToKnightCapture;
-        
-        if (isCapture) {
-            if (movePieceType === Piece.Pawn) {
-                pgnMove += squareToString(source)[0];
+        const isCapture =
+            flag === MoveFlag.Capture ||
+            flag === MoveFlag.EnPassant ||
+            flag >= MoveFlag.PromotionToKnightCapture;
+
+        let san = "";
+
+        if (pieceType !== Piece.Pawn) {
+            san += PieceUtils.pieceTypeToChar(pieceType);
+
+            const legalMoves = moveGenerator.generateLegalMoves(board.sideToMove);
+
+            const ambiguousMoves = legalMoves.filter(m => {
+                if (m === move) return false;
+
+                const sameTarget =
+                    MoveUtils.getTargetSquare(m) === target;
+
+                if (!sameTarget) return false;
+
+                const otherSource = MoveUtils.getSourceSquare(m);
+                const otherPiece = board.getPieceOnSquare(otherSource);
+
+                return PieceUtils.getType(otherPiece) === pieceType;
+            });
+
+            if (ambiguousMoves.length > 0) {
+                const sourceFile = source & 7;
+                const sourceRank = source >> 3;
+
+                const needFile = ambiguousMoves.some(m =>
+                    (MoveUtils.getSourceSquare(m) & 7) === sourceFile
+                );
+
+                const needRank = ambiguousMoves.some(m =>
+                    (MoveUtils.getSourceSquare(m) >> 3) === sourceRank
+                );
+
+                if (!needFile) {
+                    san += squareToString(source)[0];
+                } else if (!needRank) {
+                    san += squareToString(source)[1];
+                } else {
+                    san += squareToString(source);
+                }
             }
-            pgnMove += "x";
         }
 
-        pgnMove += squareToString(target);
+        if (pieceType === Piece.Pawn && isCapture) {
+            san += squareToString(source)[0];
+        }
+
+        if (isCapture) {
+            san += "x";
+        }
+
+        san += squareToString(target);
 
         if (MoveUtils.isPromotion(move)) {
-            pgnMove += "=" + PieceUtils.pieceTypeToChar(MoveUtils.getPromotionPieceType(move));
+            san += "=" + PieceUtils.pieceTypeToChar(
+                MoveUtils.getPromotionPieceType(move)
+            );
         }
 
-        return pgnMove;
+        board.makeMove(move);
+
+        const opponent = board.sideToMove;
+        const legalAfter = moveGenerator.generateLegalMoves(opponent);
+        const inCheck = moveGenerator.isKingInCheck(opponent);
+
+        if (inCheck && legalAfter.length === 0) {
+            san += "#";
+        } else if (inCheck) {
+            san += "+";
+        }
+
+        board.unmakeMove(move);
+
+        return san;
+    }
+
+    export function generatePGN(moves: Move[], initialFen: string): string {
+        let pgn = "";
+        const board = new Board();
+        board.loadPositionFromFen(initialFen);
+        const moveGenerator = new MoveGenerator(board);
+        
+        for (let i = 0; i < moves.length; i++) {
+            const move = moves[i]!;
+            if (i % 2 === 0) {
+                pgn += ((i / 2) + 1).toString() + ". ";
+            }
+            pgn += MoveUtils.moveToSAN(move, board, moveGenerator) + " ";
+            
+            board.makeMove(move);
+        }
+
+        return pgn;
     }
 }
 

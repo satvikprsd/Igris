@@ -320,7 +320,7 @@ export class MoveGenerator {
         return this.isSquareAttacked(kingSquare, side ^ Piece.ColorMask);
     }
 
-    public createMoveWithContext(source: number, target: number): Move {
+    public  createMoveWithContext(source: number, target: number): Move {
         const targetMask = 1n << BigInt(target);
         
         const movingPiece = this.board.getPieceOnSquare(source);
@@ -347,7 +347,7 @@ export class MoveGenerator {
         else if (isDoublePawnPush) flag = MoveFlag.DoublePawnPush;
         else flag = MoveFlag.Quiet;
 
-        console.log(`Creating move from ${squareToString(source)} to ${squareToString(target)} with flag ${MoveFlag[flag]}`);
+        // console.log(`Creating move from ${squareToString(source)} to ${squareToString(target)} with flag ${MoveFlag[flag]}`);
         return MoveUtils.encode(source, target, flag);
     }
 

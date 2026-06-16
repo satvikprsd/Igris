@@ -1,7 +1,7 @@
 import { Board } from "../board/board";
 import { Piece, PieceUtils } from "../board/piece";
 import { Attacks } from "../move/attacks";
-import { Move, MoveUtils } from "../move/move";
+import { Move, MoveFlag, MoveUtils } from "../move/move";
 import { Evaluation } from "./evaluation";
 
 export class MoveOrdering {
@@ -59,6 +59,13 @@ export class MoveOrdering {
 
         if (MoveUtils.isPromotion(move)) {
             moveScoreGuess += this.getPieceValue(MoveUtils.getPromotionPieceType(move));
+        }
+
+        const flag = MoveUtils.getMoveFlag(move);
+        if (flag === MoveFlag.KingCastle) {
+            moveScoreGuess += 80;
+        } else if (flag === MoveFlag.QueenCastle) {
+            moveScoreGuess += 70;
         }
 
         //passed pawns
@@ -119,7 +126,7 @@ export class MoveOrdering {
         const occupied = board.allPieces;
 
         const opponentPawns = board.bitboards[Piece.Pawn | color] || 0n;    
-        protectedSquares |= color === Piece.White ? Attacks.blackPawnAttacksFromBitboard(opponentPawns) : Attacks.blackPawnAttacksFromBitboard(opponentPawns);
+        protectedSquares |= color === Piece.White ? Attacks.whitePawnAttacksFromBitboard(opponentPawns) : Attacks.blackPawnAttacksFromBitboard(opponentPawns);
 
         let opponentKnights = board.bitboards[Piece.Knight | color] || 0n;
         while (opponentKnights !== 0n) {

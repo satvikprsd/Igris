@@ -2,7 +2,7 @@ import { Board } from "../board/board";
 import { Piece } from "../board/piece";
 import { Move, MoveFlag, MoveUtils } from "../move/move";
 import { MoveGenerator } from "../move/move_generator";
-import { pickBookMove } from "../utils/openingBook";
+import { pickBookMove } from "../utils/openingBookLookup";
 import { Evaluation } from "./evaluation";
 import { MoveOrdering } from "./moveOrdering";
 import { NodeType, TranspositionTable } from "./transpositionTable";
@@ -16,7 +16,7 @@ export class Search {
     private nodesSearched: number = 0;
     private positionsEvaluated: number = 0;
     private repetitionTable: Map<bigint, number> = new Map();
-    private gameHistoryHashes: bigint[] = []; 
+    private gameHistoryHashes: bigint[] = [];
     private startTime: number = 0;
     private timeLimit: number = 2000; // 2 sec
     private shouldStop: boolean = false;
@@ -37,14 +37,13 @@ export class Search {
         this.startTime = Date.now();
         this.timeLimit = timePerMove;
         this.shouldStop = false;
-        
+
         this.gameHistoryHashes = this.board.gameStateHistory.slice(0, this.board.historyIndex).map(state => state.zobrist);
-        
+
         console.time("Search Time");
         // console.log("Position:");
         // this.board.printBoard();
         // console.log(`Side to move: ${this.board.sideToMove === Piece.White ? 'White' : 'Black'}`);
-
 
         //check the opening Book
         const move = pickBookMove(this.board.zobristKey);
@@ -55,7 +54,7 @@ export class Search {
         }
         let moves = this.moveGenerator.generateLegalMoves(this.board.sideToMove);
         // console.log(`Legal moves: ${moves.map(m => MoveUtils.moveToString(m)).join(', ')}`);
-        
+
         if (moves.length === 0) return null;
 
         // Iterative Deepening
@@ -65,18 +64,18 @@ export class Search {
             let alpha = -Infinity;
             const beta = Infinity;
             let depthCompleted = true;
-            
+
             const ttEntry = this.transpositionTable.get(this.board.zobristKey);
             const ttMove = ttEntry?.bestMove ?? null;
-            
+
             MoveOrdering.orderMoves(this.board, moves, ttMove);
             // console.log(`Depth ${currentDepth} ordered moves: ${moves.map(m => MoveUtils.moveToString(m)).join(', ')}`);
-            
+
             let bestMoveThisDepth: Move | null = null;
             let bestScoreThisDepth = -Infinity;
 
             for (const move of moves) {
-                if (this.isTimeUp()){
+                if (this.isTimeUp()) {
                     this.shouldStop = true;
                     depthCompleted = false;
                     break;
@@ -89,6 +88,12 @@ export class Search {
                 const score = -this.alphaBeta(currentDepth, 0, -beta, -alpha, null);
                 // console.log(`Move: ${MoveUtils.moveToString(move)}, Score: ${score}`);
                 this.board.unmakeMove(move);
+
+                if (this.shouldStop) {
+                    depthCompleted = false;
+                    break;
+                }
+
                 if (score > alpha) {
                     alpha = score;
                     bestScoreThisDepth = score;
@@ -103,7 +108,7 @@ export class Search {
 
             currentDepth++;
         }
-        
+
         console.log(`Final depth: ${currentDepth - 1}`);
         console.log(`Nodes searched: ${this.nodesSearched}`);
         console.log(`Positions evaluated: ${this.positionsEvaluated}`);
@@ -114,7 +119,7 @@ export class Search {
     private searchAllCaptures(alpha: number, beta: number, qsDepth: number = 0): number {
         this.positionsEvaluated++;
         const evaluation = Evaluation.evaluate(this.board);
-        
+
         if (evaluation >= beta) {
             return beta;
         }
@@ -124,7 +129,7 @@ export class Search {
         if (qsDepth > MAX_QS_DEPTH) {
             return alpha;
         }
-        
+
         const inCheck = this.moveGenerator.isKingInCheck(this.board.sideToMove);
         const captureMoves = this.moveGenerator.generateLegalMoves(this.board.sideToMove, !inCheck);
         MoveOrdering.orderMoves(this.board, captureMoves);
@@ -137,7 +142,7 @@ export class Search {
             this.board.makeMove(move);
             const score = -this.searchAllCaptures(-beta, -alpha, qsDepth + 1);
             this.board.unmakeMove(move);
-            
+
             if (score >= beta) {
                 return beta;
             }
@@ -158,12 +163,13 @@ export class Search {
 
         const alphaOrig = alpha;
         const betaOrig = beta;
-        
+
+        if (this.isRepetition(this.board.zobristKey)) {
+            this.popKeyFromRepetitionTable(this.board.zobristKey);
+            return 0; // threefold repetition draw
+        }
+
         if (plyFromRoot > 0) {
-            // Repetition check
-            // if (this.isRepetition(this.board.zobristKey)) {
-            //     return 0; // draw
-            // }
 
             alpha = Math.max(alpha, -this.immediateMateScore + plyFromRoot);
             beta = Math.min(beta, this.immediateMateScore - plyFromRoot);
@@ -171,12 +177,12 @@ export class Search {
                 return alpha;
             }
         }
-        
+
         this.pushKeyToRepetitionTable(this.board.zobristKey);
 
         // TT lookup
         const ttEval = this.transpositionTable.lookupEvaluation(this.board.zobristKey, depth, plyFromRoot, alphaOrig, betaOrig);
-        
+
         if (ttEval !== TranspositionTable.LOOKUP_FAILED) {
             this.popKeyFromRepetitionTable(this.board.zobristKey);
             return ttEval;
@@ -188,6 +194,12 @@ export class Search {
             this.positionsEvaluated++;
             this.popKeyFromRepetitionTable(this.board.zobristKey);
             if (this.moveGenerator.isKingInCheck(this.board.sideToMove)) {
+                // console.log(
+                //     "Mate detected at ply",
+                //     plyFromRoot,
+                //     "depth",
+                //     depth
+                // );
                 return -this.immediateMateScore + plyFromRoot;
             }
             return 0; // Stalemate
@@ -201,7 +213,7 @@ export class Search {
         //TT move for move ordering
         const ttEntry = this.transpositionTable.get(this.board.zobristKey);
         const ttMove = ttEntry?.bestMove ?? null;
-        
+
         MoveOrdering.orderMoves(this.board, moves, ttMove);
 
         let bestScore = -Infinity;
@@ -210,14 +222,14 @@ export class Search {
 
         for (const move of moves) {
             this.board.makeMove(move);
-            
+
             let evaluation: number;
-            
+
             // Late Move Reduction
             if (moveIndex >= 4 && depth >= 3 && !this.moveGenerator.isKingInCheck(this.board.sideToMove ^ Piece.ColorMask)) {
                 const flag = MoveUtils.getMoveFlag(move);
                 const isQuiet = flag !== MoveFlag.Capture && flag < MoveFlag.PromotionToKnightCapture;
-                
+
                 if (isQuiet) {
                     evaluation = -this.alphaBeta(depth - 2, plyFromRoot + 1, -beta, -alpha, move);
                     if (evaluation > alpha) {
@@ -229,16 +241,30 @@ export class Search {
             } else {
                 evaluation = -this.alphaBeta(depth - 1, plyFromRoot + 1, -beta, -alpha, move);
             }
-            
+
             this.board.unmakeMove(move);
             moveIndex++;
+
+            if (Math.abs(evaluation) > 90000) {
+                // console.log(
+                //     "mate score",
+                //     evaluation,
+                //     "ply",
+                //     plyFromRoot,
+                //     "move",
+                //     MoveUtils.moveToString(move)
+                // );
+            }
 
             if (evaluation > bestScore) {
                 bestScore = evaluation;
                 bestMove = move;
             }
-            
+
             alpha = Math.max(alpha, evaluation);
+            if (alpha >= beta) {
+                break;
+            }
         }
 
         let nodeType: NodeType;
@@ -246,8 +272,9 @@ export class Search {
         else if (bestScore >= betaOrig) nodeType = NodeType.LowerBound;
         else nodeType = NodeType.Exact;
 
-
-        this.transpositionTable.storeEvaluation(this.board.zobristKey, depth, plyFromRoot, bestScore, nodeType, bestMove);
+        if (!this.shouldStop) {
+            this.transpositionTable.storeEvaluation(this.board.zobristKey, depth, plyFromRoot, bestScore, nodeType, bestMove);
+        }
 
         this.popKeyFromRepetitionTable(this.board.zobristKey);
 
@@ -268,7 +295,7 @@ export class Search {
     }
 
     private isRepetition(zobristKey: bigint): boolean {
-        let count = 0;
+        let count = 1;
         for (const hash of this.gameHistoryHashes) {
             if (hash === zobristKey) {
                 count++;

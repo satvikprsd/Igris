@@ -1,0 +1,1302 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Igris Chess Engine</title>
+    <script src="browser-engine.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --square-size: min(11.2vh, 8.2vw);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            height: 100vh;
+            background: linear-gradient(135deg, #2c2b29 0%, #4b4847 100%);
+            color: #ffffff;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 0;
+            margin: 0;
+            overflow: hidden;
+        }
+
+        .app-layout {
+            display: flex;
+            width: 100%;
+            height: 100vh;
+            padding: 24px;
+            gap: 32px;
+            align-items: stretch;
+        }
+
+        .board-area {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+
+
+        .board-container {
+            position: relative;
+            width: fit-content;
+        }
+
+        .square-coordinate {
+            position: absolute;
+            font-size: 13px;
+            font-weight: 700;
+            user-select: none;
+            pointer-events: none;
+            line-height: 1;
+            z-index: 10;
+        }
+
+        .square-coordinate.rank {
+            top: 4px;
+            left: 4px;
+        }
+
+        .square-coordinate.file {
+            bottom: 4px;
+            right: 4px;
+        }
+
+        .square.dark .square-coordinate {
+            color: #ffffff;
+        }
+
+        .square.light .square-coordinate {
+            color: #69923e;
+        }
+
+        .chessboard {
+            display: grid;
+            grid-template-columns: repeat(8, var(--square-size));
+            grid-template-rows: repeat(8, var(--square-size));
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
+        }
+
+        .square {
+            width: var(--square-size);
+            height: var(--square-size);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            transition: all 0.15s ease;
+        }
+
+        .square.light {
+            background: #ffffff;
+        }
+
+        .square.dark {
+            background: #69923e;
+        }
+
+        .square.highlight {
+            box-shadow: inset 0 0 0 3px #f59e0b;
+        }
+
+        .square.selected {
+            background: #f6f669 !important;
+        }
+
+        .square.valid-move {
+            cursor: pointer;
+        }
+
+        .square.valid-move::after {
+            content: '';
+            position: absolute;
+            width: calc(var(--square-size) * 0.3);
+            height: calc(var(--square-size) * 0.3);
+            background: rgba(0, 0, 0, 0.15);
+            border-radius: 50%;
+            pointer-events: none;
+        }
+
+        .square.valid-move.has-piece::after {
+            width: 100%;
+            height: 100%;
+            background: transparent;
+            border: 5px solid rgba(0, 0, 0, 0.15);
+            border-radius: 0;
+        }
+
+        .square.last-move {
+            background: rgba(255, 255, 0, 0.4) !important;
+        }
+
+        .piece-img {
+            width: calc(var(--square-size) * 0.85);
+            height: calc(var(--square-size) * 0.85);
+            cursor: pointer;
+            user-select: none;
+            z-index: 1;
+        }
+
+        .piece-img.not-turn {
+            cursor: default;
+        }
+
+        .piece-img:active {
+            cursor: grabbing;
+        }
+
+        .piece-img.not-turn:active {
+            cursor: default;
+        }
+
+        .piece-img.dragging {
+            opacity: 0.4;
+        }
+
+        .info-panel {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 16px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 8px;
+        }
+
+        .turn-display {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .turn-indicator {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            transition: all 0.3s ease;
+        }
+
+        .turn-indicator.white {
+            background: #fff;
+            box-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+        }
+
+        .turn-indicator.black {
+            background: #1a1a1a;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+        }
+
+        .turn-text {
+            font-size: 15px;
+            font-weight: 600;
+        }
+
+        .status {
+            font-size: 13px;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }
+
+        .status.error {
+            background: rgba(239, 68, 68, 0.2);
+            color: #fca5a5;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+
+        .status.success {
+            background: rgba(34, 197, 94, 0.2);
+            color: #86efac;
+            border: 1px solid rgba(34, 197, 94, 0.3);
+        }
+
+        .status.info {
+            background: rgba(59, 130, 246, 0.2);
+            color: #93c5fd;
+            border: 1px solid rgba(59, 130, 246, 0.3);
+        }
+
+        .sidebar-bottom {
+            padding: 20px;
+            background: rgba(0, 0, 0, 0.1);
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .controls {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            width: 100%;
+        }
+
+        button {
+            padding: 12px 16px;
+            font-size: 13px;
+            font-weight: 600;
+            font-family: inherit;
+            background: rgba(255, 255, 255, 0.1);
+            color: #e8e8e8;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        button:hover {
+            background: rgba(255, 255, 255, 0.15);
+            border-color: rgba(255, 255, 255, 0.25);
+            transform: translateY(-1px);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        button.primary {
+            background: linear-gradient(135deg, #69923e 0%, #4e7837 100%);
+            border: none;
+        }
+
+        button.primary:hover {
+            opacity: 0.9;
+            box-shadow: 0 4px 15px rgba(105, 146, 62, 0.4);
+        }
+
+        button.danger {
+            background: rgba(239, 68, 68, 0.2);
+            border-color: rgba(239, 68, 68, 0.3);
+            color: #fca5a5;
+        }
+
+        button.danger:hover {
+            background: rgba(239, 68, 68, 0.3);
+        }
+
+        .icon {
+            font-size: 16px;
+        }
+
+        .board-wrapper {
+            display: flex;
+            gap: 12px;
+            align-items: stretch;
+        }
+
+        .eval-bar-container {
+            width: 24px;
+            height: calc(8 * var(--square-size));
+            background: #1a1a1a;
+            border-radius: 6px;
+            overflow: hidden;
+            position: relative;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .eval-bar {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            width: 100%;
+            background: #fff;
+            transition: height 0.5s ease-out;
+        }
+
+        .eval-label {
+            position: absolute;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 10px;
+            font-weight: 700;
+            padding: 2px 4px;
+            border-radius: 3px;
+            z-index: 2;
+            white-space: nowrap;
+        }
+
+        .eval-label.top {
+            top: 4px;
+            color: #1a1a1a;
+            background: rgba(255, 255, 255, 0.9);
+        }
+
+        .eval-label.bottom {
+            bottom: 4px;
+            color: #fff;
+            background: rgba(0, 0, 0, 0.7);
+        }
+
+        .sidebar {
+            width: 360px;
+            background: rgba(0, 0, 0, 0.25);
+            backdrop-filter: blur(10px);
+            border-left: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        .moves-history {
+            flex: 1;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .moves-history h3 {
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 12px;
+            color: #9ca3af;
+            text-align: center;
+        }
+
+        .moves-list {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            flex: 1;
+            overflow-y: auto;
+        }
+
+        .move-row {
+            display: grid;
+            grid-template-columns: 32px 1fr 1fr;
+            gap: 8px;
+            padding: 6px 8px;
+            border-radius: 4px;
+            font-size: 13px;
+            transition: background 0.2s;
+        }
+
+        .move-row:hover {
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .move-number {
+            color: #6b7280;
+            font-weight: 600;
+        }
+
+        .move-white,
+        .move-black {
+            color: #e8e8e8;
+            font-family: 'Courier New', monospace;
+            font-weight: 500;
+        }
+
+        .move-white {
+            text-align: left;
+        }
+
+        .move-black {
+            text-align: left;
+        }
+
+        .moves-list::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .moves-list::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 3px;
+        }
+
+        .moves-list::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 3px;
+        }
+
+        .moves-list::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        .time-control-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(255, 255, 255, 0.05);
+            padding: 8px 16px;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            grid-column: span 2;
+            justify-content: space-between;
+        }
+
+        .time-limit-label {
+            font-size: 13px;
+            font-weight: 600;
+            color: #9ca3af;
+        }
+
+        .styled-select {
+            padding: 8px 12px;
+            font-size: 13px;
+            font-weight: 600;
+            font-family: inherit;
+            background: rgba(255, 255, 255, 0.1);
+            color: #e8e8e8;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 8px;
+            cursor: pointer;
+            outline: none;
+            transition: all 0.2s ease;
+        }
+
+        .styled-select:hover {
+            background: rgba(255, 255, 255, 0.15);
+            border-color: rgba(255, 255, 255, 0.25);
+        }
+
+        .styled-select option {
+            background: #2c2b29;
+            color: #e8e8e8;
+        }
+
+        .promotion-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(44, 43, 41, 0.6);
+            backdrop-filter: blur(4px);
+            z-index: 100;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            border-radius: 8px;
+        }
+
+        .promotion-options {
+            background: rgba(44, 43, 41, 0.95);
+            border: 2px solid rgba(105, 146, 62, 0.5);
+            border-radius: 16px;
+            padding: 16px;
+            display: flex;
+            gap: 16px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+        }
+
+        .promotion-piece {
+            width: 64px;
+            height: 64px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .promotion-piece:hover {
+            background: rgba(105, 146, 62, 0.2);
+            border-color: rgba(105, 146, 62, 0.6);
+            transform: scale(1.1);
+        }
+
+        .promotion-piece img {
+            width: 56px;
+            height: 56px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="app-layout">
+        <!-- Left Side: Chess Board -->
+        <div class="board-area">
+            <div class="board-container">
+                <div class="board-wrapper">
+                    <div class="eval-bar-container">
+                        <div id="eval-bar" class="eval-bar" style="height: 50%;"></div>
+                        <span id="eval-label" class="eval-label top">0.0</span>
+                    </div>
+                    <div id="board-wrapper" style="position: relative;">
+                        <div id="board" class="chessboard"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Side: Sidebar covering entire height -->
+        <div class="sidebar">
+            <div class="moves-history">
+                <h3>Move History</h3>
+                <div id="moves-list" class="moves-list"></div>
+            </div>
+
+            <div class="sidebar-bottom">
+                <div class="info-panel">
+                    <div class="turn-display">
+                        <div id="turn-indicator" class="turn-indicator white"></div>
+                        <span id="turn-text" class="turn-text">White to move</span>
+                    </div>
+                    <div id="status" class="status info">Connecting...</div>
+                </div>
+
+                <div class="controls">
+                    <div class="time-control-wrapper">
+                        <label for="time-limit-select" class="time-limit-label">⏱️ Time per Move:</label>
+                        <select id="time-limit-select" class="styled-select" onchange="updateTimeLimit()">
+                            <option value="1000" selected>1 sec</option>
+                            <option value="5000">5 sec</option>
+                            <option value="10000">10 sec</option>
+                            <option value="30000">30 sec</option>
+                        </select>
+                    </div>
+                    <button class="danger" onclick="resetGame()">
+                        <span class="icon">↺</span> Reset
+                    </button>
+                    <button onclick="undoMove()">
+                        <span class="icon">←</span> Undo
+                    </button>
+                    <button id="bot-toggle" onclick="toggleBot()">
+                        <span class="icon">🤖</span> <span id="bot-status">Enable Bot</span>
+                    </button>
+                    <button id="bot-vs-bot-toggle" onclick="toggleBotVsBot()">
+                        <span class="icon">⚔️</span> <span id="bot-vs-bot-status">Bot vs Bot</span>
+                    </button>
+                    <button onclick="flipSide()">
+                        <span class="icon">🔄</span> Flip Side
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const boardEl = document.getElementById('board');
+        const turnIndicatorEl = document.getElementById('turn-indicator');
+        const turnTextEl = document.getElementById('turn-text');
+        const statusEl = document.getElementById('status');
+        const evalBarEl = document.getElementById('eval-bar');
+        const evalLabelEl = document.getElementById('eval-label');
+
+        const assets = {
+            'P': 'images/wp.png', 'N': 'images/wkn.png', 'B': 'images/wb.png',
+            'R': 'images/wr.png', 'Q': 'images/wq.png', 'K': 'images/wk.png',
+            'p': 'images/bp.png', 'n': 'images/bkn.png', 'b': 'images/bb.png',
+            'r': 'images/br.png', 'q': 'images/bq.png', 'k': 'images/bk.png'
+        };
+
+        const board = new IgrisEngine.Board();
+        board.loadPositionFromFen(IgrisEngine.startFEN);
+        const moveGenerator = new IgrisEngine.MoveGenerator(board);
+
+        let selectedSquare = null;
+        let currentBoardState = null;
+        let currentTurn = 'white';
+        let currentLegalMoves = [];
+        let botEnabled = false;
+        let botVsBotEnabled = false;
+        let isProcessingBotMove = false;
+        let playerColor = 'white';
+        let currentEvaluation = 0;
+        let movesHistory = [];
+        let moves = [];
+        let boardHistory = [];
+        let currentHistoryIndex = -1;
+        let isViewingHistory = false;
+
+        const searchWorker = new Worker('worker.js');
+
+        searchWorker.onmessage = function (e) {
+            const data = e.data;
+            if (data.type === 'searchResult') {
+                const moveString = data.move;
+                const bestMove = data.moveEncoded;
+                const bestEvaluation = data.evaluation;
+
+                const legalMoves = moveGenerator.generateLegalMoves(board.sideToMove);
+                const matchedMove = legalMoves.find(m => m === bestMove || IgrisEngine.MoveUtils.moveToString(m) === moveString);
+
+                if (matchedMove !== undefined) {
+                    const san = IgrisEngine.MoveUtils.moveToSAN(matchedMove, board, moveGenerator);
+                    board.makeMove(matchedMove);
+                    moves.push(matchedMove);
+                    addMoveToHistory(san);
+
+                    const evalPerspective = board.sideToMove === IgrisEngine.Piece.White ? -1 : 1;
+                    const normalizedEval = bestEvaluation * evalPerspective / 100;
+                    updateEvalBar(normalizedEval);
+
+                    showStatus(`Bot played: ${san} (eval: ${normalizedEval.toFixed(2)})`, 'success');
+                } else {
+                    showStatus('Bot search completed, but move invalid.', 'error');
+                }
+
+                isProcessingBotMove = false;
+                fetchBoard();
+            } else if (data.type === 'error') {
+                showStatus(`Bot error: ${data.error}`, 'error');
+                isProcessingBotMove = false;
+            }
+        };
+
+        function showStatus(message, type = 'info') {
+            statusEl.textContent = message;
+            statusEl.className = `status ${type}`;
+        }
+
+        function updateMovesDisplay() {
+            const movesListEl = document.getElementById('moves-list');
+            movesListEl.innerHTML = '';
+
+            for (let i = 0; i < movesHistory.length; i += 2) {
+                const moveRow = document.createElement('div');
+                moveRow.className = 'move-row';
+
+                const moveNum = document.createElement('span');
+                moveNum.className = 'move-number';
+                moveNum.textContent = `${Math.floor(i / 2) + 1}.`;
+
+                const whiteMove = document.createElement('span');
+                whiteMove.className = 'move-white';
+                whiteMove.textContent = movesHistory[i] || '';
+
+                const blackMove = document.createElement('span');
+                blackMove.className = 'move-black';
+                blackMove.textContent = movesHistory[i + 1] || '';
+
+                moveRow.appendChild(moveNum);
+                moveRow.appendChild(whiteMove);
+                moveRow.appendChild(blackMove);
+                movesListEl.appendChild(moveRow);
+            }
+
+            movesListEl.scrollTop = movesListEl.scrollHeight;
+        }
+
+        function addMoveToHistory(moveNotation) {
+            movesHistory.push(moveNotation);
+            if (currentBoardState) {
+                boardHistory.push([...currentBoardState]);
+            }
+            updateMovesDisplay();
+        }
+
+        function viewHistoryPosition(index) {
+            if (index < 0 || index >= boardHistory.length) {
+                isViewingHistory = false;
+                currentHistoryIndex = -1;
+                if (currentBoardState) {
+                    renderBoard(currentBoardState);
+                }
+                showStatus('Viewing current position', 'info');
+            } else {
+                isViewingHistory = true;
+                currentHistoryIndex = index;
+                renderBoard(boardHistory[index]);
+                const moveNum = Math.floor(index / 2) + 1;
+                const isWhiteMove = index % 2 === 0;
+                showStatus(`Viewing move ${moveNum}${isWhiteMove ? '' : '...'}`, 'info');
+            }
+        }
+
+        function navigateHistory(direction) {
+            if (boardHistory.length === 0) return;
+
+            let newIndex = currentHistoryIndex;
+
+            if (direction === 'left') {
+                if (currentHistoryIndex === -1) {
+                    newIndex = boardHistory.length - 1;
+                } else {
+                    newIndex = Math.max(0, currentHistoryIndex - 1);
+                }
+            } else if (direction === 'right') {
+                if (currentHistoryIndex === -1) {
+                    return;
+                } else {
+                    newIndex = currentHistoryIndex + 1;
+                    if (newIndex >= boardHistory.length) {
+                        newIndex = -1;
+                    }
+                }
+            }
+
+            viewHistoryPosition(newIndex);
+        }
+
+        function updateEvalBar(evaluation) {
+            currentEvaluation = evaluation;
+
+            const maxEval = 10;
+            const clampedEval = Math.max(-maxEval, Math.min(maxEval, evaluation));
+
+            const percentage = 50 + (clampedEval / maxEval) * 50;
+
+            evalBarEl.style.height = `${percentage}%`;
+
+            let labelText;
+            if (Math.abs(evaluation) > 50) {
+                const mateIn = Math.round(1000 - Math.abs(evaluation));
+                labelText = evaluation > 0 ? 'M' + mateIn : '-M' + mateIn;
+            } else {
+                labelText = evaluation >= 0 ? `+${evaluation.toFixed(1)}` : evaluation.toFixed(1);
+            }
+            evalLabelEl.textContent = labelText;
+
+            if (evaluation >= 0) {
+                evalLabelEl.className = 'eval-label top';
+            } else {
+                evalLabelEl.className = 'eval-label bottom';
+            }
+        }
+
+        function fetchBoard() {
+            try {
+                const legalMoves = moveGenerator.generateLegalMoves(board.sideToMove);
+                const isThreefoldDraw = IgrisEngine.BoardUtils.isThreefoldRepetition(board);
+                const isStalemate = !moveGenerator.isKingInCheck(board.sideToMove) && legalMoves.length === 0;
+                const isDraw = isThreefoldDraw || isStalemate || board.isFiftyMoveRule();
+                const isCheckMate = moveGenerator.isKingInCheck(board.sideToMove) && legalMoves.length === 0;
+
+                currentBoardState = board.toPieceArray();
+
+                currentLegalMoves = legalMoves.map((move) => IgrisEngine.MoveUtils.moveToString(move));
+
+                currentTurn = (board.sideToMove === IgrisEngine.Piece.White) ? 'white' : 'black';
+
+                turnIndicatorEl.className = `turn-indicator ${currentTurn}`;
+                turnTextEl.textContent = `${currentTurn.charAt(0).toUpperCase() + currentTurn.slice(1)} to move`;
+
+                if (!isViewingHistory) {
+                    renderBoard(currentBoardState);
+                }
+
+                if (isCheckMate) {
+                    showStatus(`CHECKMATE! ${currentTurn === 'white' ? 'Black' : 'White'} wins!`, 'error');
+                } else if (isDraw) {
+                    let drawText = 'Draw!';
+                    if (isThreefoldDraw) drawText = 'Draw by threefold repetition!';
+                    else if (isStalemate) drawText = 'Draw by stalemate!';
+                    else if (board.isFiftyMoveRule()) drawText = 'Draw by fifty-move rule!';
+                    showStatus(drawText, 'info');
+                } else {
+                    showStatus('Game in progress', 'success');
+                }
+
+                const shouldBotMove = botVsBotEnabled || (botEnabled && currentTurn !== playerColor);
+                if (shouldBotMove && !isProcessingBotMove && !isCheckMate && !isDraw) {
+                    isProcessingBotMove = true;
+                    setTimeout(() => makeBotMove(), 300);
+                }
+            } catch (err) {
+                console.error("Error updating board state:", err);
+                showStatus(`Error: ${err.message}`, 'error');
+            }
+        }
+
+        function resetGame() {
+            try {
+                showStatus('Resetting game...', 'info');
+
+                board.loadPositionFromFen(IgrisEngine.startFEN);
+                playerColor = 'white';
+                moves = [];
+                movesHistory = [];
+                boardHistory = [];
+                currentHistoryIndex = -1;
+                isViewingHistory = false;
+
+                updateMovesDisplay();
+                updateEvalBar(0);
+                fetchBoard();
+
+                showStatus('Game reset successfully', 'success');
+            } catch (err) {
+                console.error("Reset error:", err);
+                showStatus(`Reset failed: ${err.message}`, 'error');
+            }
+        }
+
+        function undoMove() {
+            try {
+                if (moves.length === 0) {
+                    showStatus('No moves to undo', 'error');
+                    return;
+                }
+                showStatus('Undoing move...', 'info');
+
+                const lastMove = moves.pop();
+                board.unmakeMove(lastMove);
+
+                if (movesHistory.length > 0) {
+                    movesHistory.pop();
+                    boardHistory.pop();
+                    updateMovesDisplay();
+                }
+
+                isViewingHistory = false;
+                currentHistoryIndex = -1;
+
+                fetchBoard();
+                showStatus('Move undone successfully', 'success');
+            } catch (err) {
+                console.error("Undo error:", err);
+                showStatus(`Undo failed: ${err.message}`, 'error');
+            }
+        }
+
+        function renderBoard(boardArray) {
+            boardEl.innerHTML = '';
+
+            for (let rank = 7; rank >= 0; rank--) {
+                for (let file = 0; file < 8; file++) {
+                    const squareIndex = rank * 8 + file;
+                    const pieceChar = boardArray[squareIndex];
+
+                    const sq = document.createElement('div');
+                    sq.className = `square ${(rank + file) % 2 === 0 ? 'dark' : 'light'}`;
+                    sq.dataset.index = squareIndex;
+                    sq.dataset.rank = rank;
+                    sq.dataset.file = file;
+
+                    if (file === 0) {
+                        const rankLabel = document.createElement('span');
+                        rankLabel.className = 'square-coordinate rank';
+                        rankLabel.textContent = rank + 1;
+                        sq.appendChild(rankLabel);
+                    }
+
+                    if (rank === 0) {
+                        const fileLabel = document.createElement('span');
+                        fileLabel.className = 'square-coordinate file';
+                        const files = 'abcdefgh';
+                        fileLabel.textContent = files[file];
+                        sq.appendChild(fileLabel);
+                    }
+
+                    if (selectedSquare === squareIndex) {
+                        sq.classList.add('selected');
+                    }
+
+                    sq.addEventListener('click', handleSquareClick);
+
+                    if (pieceChar && pieceChar !== '.' && pieceChar !== ' ' && assets[pieceChar]) {
+                        const img = document.createElement('img');
+                        img.src = assets[pieceChar];
+                        img.className = 'piece-img';
+                        img.alt = pieceChar;
+                        img.draggable = true;
+                        img.dataset.piece = pieceChar;
+                        img.dataset.index = squareIndex;
+
+                        const isWhitePiece = pieceChar === pieceChar.toUpperCase();
+                        const canMove = (currentTurn === 'white' && isWhitePiece) ||
+                            (currentTurn === 'black' && !isWhitePiece);
+
+                        if (!canMove) {
+                            img.classList.add('not-turn');
+                            img.draggable = false;
+                        }
+
+                        img.addEventListener('dragstart', handleDragStart);
+                        img.addEventListener('dragend', handleDragEnd);
+
+                        img.onerror = function () {
+                            this.style.display = 'none';
+                            sq.textContent = pieceChar;
+                            sq.style.fontSize = '32px';
+                        };
+
+                        sq.appendChild(img);
+                    }
+
+                    sq.addEventListener('dragover', handleDragOver);
+                    sq.addEventListener('drop', handleDrop);
+
+                    boardEl.appendChild(sq);
+                }
+            }
+
+            if (selectedSquare !== null) {
+                highlightLegalMoves(selectedSquare);
+            }
+        }
+
+        function handleSquareClick(e) {
+            if (isViewingHistory) {
+                viewHistoryPosition(-1);
+                return;
+            }
+
+            const square = e.currentTarget;
+            const squareIndex = parseInt(square.dataset.index);
+            const piece = square.querySelector('.piece-img');
+
+            const isOwnPiece = piece && !piece.classList.contains('not-turn');
+
+            if (selectedSquare !== null) {
+                if (selectedSquare === squareIndex) {
+                    clearSelection();
+                } else if (isOwnPiece) {
+                    selectSquare(squareIndex);
+                } else {
+                    makeMove(selectedSquare, squareIndex);
+                    clearSelection();
+                }
+            } else {
+                if (isOwnPiece) {
+                    selectSquare(squareIndex);
+                }
+            }
+        }
+
+        function selectSquare(index) {
+            clearSelection();
+            selectedSquare = index;
+            const squareEl = document.querySelector(`.square[data-index="${index}"]`);
+            if (squareEl) {
+                squareEl.classList.add('selected');
+            }
+
+            highlightLegalMoves(index);
+        }
+
+        function highlightLegalMoves(fromIndex) {
+            const fromNotation = indexToNotation(fromIndex);
+
+            currentLegalMoves.forEach(move => {
+                const moveFrom = move.substring(0, 2);
+                const moveTo = move.substring(2, 4);
+
+                if (moveFrom === fromNotation) {
+                    const toIndex = notationToIndex(moveTo);
+                    const targetSquare = document.querySelector(`.square[data-index="${toIndex}"]`);
+                    if (targetSquare) {
+                        targetSquare.classList.add('valid-move');
+                        if (targetSquare.querySelector('.piece-img')) {
+                            targetSquare.classList.add('has-piece');
+                        }
+                    }
+                }
+            });
+        }
+
+        function notationToIndex(notation) {
+            const files = 'abcdefgh';
+            const file = files.indexOf(notation[0]);
+            const rank = parseInt(notation[1]) - 1;
+            return rank * 8 + file;
+        }
+
+        function clearSelection() {
+            selectedSquare = null;
+            document.querySelectorAll('.square').forEach(sq => {
+                sq.classList.remove('selected', 'highlight', 'valid-move', 'has-piece');
+            });
+        }
+
+        function handleDragStart(e) {
+            if (isViewingHistory) {
+                viewHistoryPosition(-1);
+                e.preventDefault();
+                return;
+            }
+
+            const piece = e.target;
+            if (piece.classList.contains('not-turn')) {
+                e.preventDefault();
+                return;
+            }
+
+            const fromIndex = parseInt(piece.dataset.index);
+
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', fromIndex);
+
+            piece.classList.add('dragging');
+            selectedSquare = fromIndex;
+
+            const sourceSquare = document.querySelector(`.square[data-index="${fromIndex}"]`);
+            if (sourceSquare) {
+                sourceSquare.classList.add('selected');
+            }
+
+            highlightLegalMoves(fromIndex);
+        }
+
+        function handleDragEnd(e) {
+            e.target.classList.remove('dragging');
+            clearSelection();
+        }
+
+        function handleDragOver(e) {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            e.currentTarget.classList.add('highlight');
+        }
+
+        function handleDrop(e) {
+            e.preventDefault();
+            e.currentTarget.classList.remove('highlight');
+
+            const fromIndex = parseInt(e.dataTransfer.getData('text/plain'));
+            const toSquare = e.currentTarget;
+            const toIndex = parseInt(toSquare.dataset.index);
+
+            if (fromIndex !== toIndex) {
+                makeMove(fromIndex, toIndex);
+            }
+        }
+
+        function showPromotionUI(matchingMoves, onSelect) {
+            const existing = document.getElementById('promotion-overlay');
+            if (existing) existing.remove();
+
+            const isWhite = currentTurn === 'white';
+
+            const overlay = document.createElement('div');
+            overlay.id = 'promotion-overlay';
+            overlay.className = 'promotion-overlay';
+
+            const optionsContainer = document.createElement('div');
+            optionsContainer.className = 'promotion-options';
+
+            const promoteTypes = [
+                { type: IgrisEngine.Piece.Queen, char: isWhite ? 'Q' : 'q' },
+                { type: IgrisEngine.Piece.Rook, char: isWhite ? 'R' : 'r' },
+                { type: IgrisEngine.Piece.Bishop, char: isWhite ? 'B' : 'b' },
+                { type: IgrisEngine.Piece.Knight, char: isWhite ? 'N' : 'n' }
+            ];
+
+            promoteTypes.forEach(p => {
+                const btn = document.createElement('div');
+                btn.className = 'promotion-piece';
+                btn.onclick = () => {
+                    overlay.remove();
+                    const chosenMove = matchingMoves.find(m => IgrisEngine.MoveUtils.getPromotionPieceType(m) === p.type);
+                    if (chosenMove !== undefined) {
+                        onSelect(chosenMove);
+                    } else {
+                        showStatus('Invalid promotion selection', 'error');
+                    }
+                };
+
+                const img = document.createElement('img');
+                img.src = assets[p.char];
+                img.alt = p.char;
+
+                btn.appendChild(img);
+                optionsContainer.appendChild(btn);
+            });
+
+            overlay.appendChild(optionsContainer);
+
+            overlay.addEventListener('click', (e) => {
+                if (e.target === overlay) {
+                    overlay.remove();
+                    clearSelection();
+                    fetchBoard();
+                }
+            });
+
+            document.getElementById('board-wrapper').appendChild(overlay);
+        }
+
+        function makeMove(fromIndex, toIndex) {
+            const fromNotation = indexToNotation(fromIndex);
+            const toNotation = indexToNotation(toIndex);
+            const moveString = fromNotation + toNotation;
+
+            const legalMoves = moveGenerator.generateLegalMoves(board.sideToMove);
+            const matchingMoves = legalMoves.filter(move => IgrisEngine.MoveUtils.moveToString(move).startsWith(moveString));
+
+            if (matchingMoves.length === 0) {
+                showStatus('Illegal move', 'error');
+                return;
+            }
+
+            const executeMove = (move) => {
+                try {
+                    showStatus('Making move...', 'info');
+
+                    const san = IgrisEngine.MoveUtils.moveToSAN(move, board, moveGenerator);
+                    board.makeMove(move);
+                    moves.push(move);
+                    addMoveToHistory(san);
+
+                    showStatus(`Move: ${fromNotation} → ${toNotation}`, 'success');
+                    fetchBoard();
+                } catch (err) {
+                    console.error("Move error:", err);
+                    showStatus(`Invalid move: ${err.message}`, 'error');
+                    fetchBoard();
+                }
+            };
+
+            const isPromotion = matchingMoves.some(move => IgrisEngine.MoveUtils.isPromotion(move));
+            if (isPromotion) {
+                showPromotionUI(matchingMoves, executeMove);
+            } else {
+                executeMove(matchingMoves[0]);
+            }
+        }
+
+        function makeBotMove() {
+            if (!botEnabled && !botVsBotEnabled) {
+                isProcessingBotMove = false;
+                return;
+            }
+
+            showStatus('Bot is thinking...', 'info');
+
+            const timeLimitVal = parseInt(document.getElementById('time-limit-select').value) || 1000;
+
+            searchWorker.postMessage({
+                type: 'search',
+                initialFen: IgrisEngine.startFEN,
+                moves: moves,
+                timeLimit: timeLimitVal
+            });
+        }
+
+        function updateTimeLimit() {
+            const val = document.getElementById('time-limit-select').value;
+            localStorage.setItem('igrisTimeLimit', val);
+        }
+
+        function flipSide() {
+            playerColor = playerColor === 'white' ? 'black' : 'white';
+            fetchBoard();
+            showStatus(`You are now playing as ${playerColor.charAt(0).toUpperCase() + playerColor.slice(1)}`, 'success');
+        }
+
+        function toggleBot() {
+            botEnabled = !botEnabled;
+
+            if (botEnabled && botVsBotEnabled) {
+                botVsBotEnabled = false;
+                const botVsBotBtn = document.getElementById('bot-vs-bot-toggle');
+                const botVsBotStatusText = document.getElementById('bot-vs-bot-status');
+                botVsBotBtn.classList.remove('primary');
+                botVsBotStatusText.textContent = 'Bot vs Bot';
+            }
+
+            const botToggleBtn = document.getElementById('bot-toggle');
+            const botStatusText = document.getElementById('bot-status');
+
+            if (botEnabled) {
+                botToggleBtn.classList.add('primary');
+                botStatusText.textContent = 'Bot Enabled';
+                showStatus(`Bot mode enabled - You play ${playerColor.charAt(0).toUpperCase() + playerColor.slice(1)}`, 'success');
+
+                if (currentTurn !== playerColor && !isProcessingBotMove) {
+                    isProcessingBotMove = true;
+                    setTimeout(() => makeBotMove(), 300);
+                }
+            } else {
+                botToggleBtn.classList.remove('primary');
+                botStatusText.textContent = 'Enable Bot';
+                showStatus('Bot mode disabled', 'info');
+            }
+        }
+
+        function toggleBotVsBot() {
+            botVsBotEnabled = !botVsBotEnabled;
+
+            if (botVsBotEnabled && botEnabled) {
+                botEnabled = false;
+                const botToggleBtn = document.getElementById('bot-toggle');
+                const botStatusText = document.getElementById('bot-status');
+                botToggleBtn.classList.remove('primary');
+                botStatusText.textContent = 'Enable Bot';
+            }
+
+            const botVsBotBtn = document.getElementById('bot-vs-bot-toggle');
+            const botVsBotStatusText = document.getElementById('bot-vs-bot-status');
+
+            if (botVsBotEnabled) {
+                botVsBotBtn.classList.add('primary');
+                botVsBotStatusText.textContent = 'Bot vs Bot On';
+                showStatus('Bot vs Bot mode enabled - watching bots play!', 'success');
+
+                if (!isProcessingBotMove) {
+                    isProcessingBotMove = true;
+                    setTimeout(() => makeBotMove(), 300);
+                }
+            } else {
+                botVsBotBtn.classList.remove('primary');
+                botVsBotStatusText.textContent = 'Bot vs Bot';
+                showStatus('Bot vs Bot mode disabled', 'info');
+            }
+        }
+
+        function indexToNotation(index) {
+            const file = index % 8;
+            const rank = Math.floor(index / 8);
+            const files = 'abcdefgh';
+            return files[file] + (rank + 1);
+        }
+
+        const savedTimeLimit = localStorage.getItem('igrisTimeLimit');
+        if (savedTimeLimit) {
+            document.getElementById('time-limit-select').value = savedTimeLimit;
+        }
+
+        fetchBoard();
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                const overlay = document.getElementById('promotion-overlay');
+                if (overlay) {
+                    overlay.remove();
+                    clearSelection();
+                    fetchBoard();
+                    e.preventDefault();
+                    return;
+                }
+            }
+            if (e.key === 'ArrowLeft') {
+                e.preventDefault();
+                navigateHistory('left');
+            } else if (e.key === 'ArrowRight') {
+                e.preventDefault();
+                navigateHistory('right');
+            }
+        });
+
+        document.addEventListener('click', (e) => {
+            if (!boardEl.contains(e.target) && selectedSquare !== null) {
+                clearSelection();
+                if (currentBoardState) {
+                    renderBoard(currentBoardState);
+                }
+            }
+        });
+    </script>
+</body>
+
+</html>

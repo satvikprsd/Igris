@@ -78,7 +78,12 @@ export namespace MoveUtils {
     export function moveToString(move: Move) : string {
         const source = getSourceSquare(move);
         const target = getTargetSquare(move);
-        return squareToString(source) + squareToString(target);
+        let moveStr = squareToString(source) + squareToString(target);
+        if (isPromotion(move)) {
+            const promoType = getPromotionPieceType(move);
+            moveStr += PieceUtils.pieceTypeToChar(promoType).toLowerCase();
+        }
+        return moveStr;
     }
 
     export function moveToSAN(move: Move, board: Board, moveGenerator: MoveGenerator): string {

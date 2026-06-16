@@ -4,16 +4,16 @@ import { Piece, PieceUtils } from "./piece";
 
 
 export enum Castling {
-  WK = 1,  // White kingside
-  WQ = 2,  // White queenside
-  BK = 4,  // Black kingside
-  BQ = 8,  // Black queenside
+    WK = 1,  // White kingside
+    WQ = 2,  // White queenside
+    BK = 4,  // Black kingside
+    BQ = 8,  // Black queenside
 }
 
 export interface GameState {
     zobrist: bigint;
     sideToMove: Piece.White | Piece.Black;
-    state : number;
+    state: number;
 }
 
 export const startFEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
@@ -25,13 +25,13 @@ export class Board {
     public whitePieces: bigint = 0n;
     public blackPieces: bigint = 0n;
     public allPieces: bigint = 0n;
-    public sideToMove: Piece.White | Piece.Black = Piece.White;
-    public currentGameState: number = 0;
+    private _sideToMove: Piece.White | Piece.Black = Piece.White;
+    private _currentGameState: number = 0;
     // 0000 0000 000000 0000
     // castlingRights enPassantSquare capturedPiece halfmoveClock
-    public gameStateHistory: GameState[] = [];
-    public historyIndex: number = 0;
-    public zobristKey: bigint = 0n;
+    private _gameStateHistory: GameState[] = [];
+    private _historyIndex: number = 0;
+    private _zobristKey: bigint = 0n;
     public mailbox: Piece[] = new Array(64).fill(Piece.None);
 
     constructor() {
@@ -45,11 +45,54 @@ export class Board {
         };
     }
 
+    get sideToMove(): Piece.White | Piece.Black {
+        return this._sideToMove;
+    }
+
+    set sideToMove(color: Piece.White | Piece.Black) {
+        if (color !== Piece.White && color !== Piece.Black) {
+            throw new Error("Invalid color for side to move");
+        }
+        this._sideToMove = color;
+    }
+
+    get zobristKey(): bigint {
+        return this._zobristKey;
+    }
+
+    set zobristKey(key: bigint) {
+        this._zobristKey = key;
+    }
+
+    get currentGameState(): number {
+        return this._currentGameState;
+    }
+
+    set currentGameState(state: number) {
+        this._currentGameState = state;
+    }
+
+    get gameStateHistory(): GameState[] {
+        return this._gameStateHistory;
+    }
+
+    set gameStateHistory(history: GameState[]) {
+        this._gameStateHistory = history;
+    }
+
+    get historyIndex(): number {
+        return this._historyIndex;
+    }
+
+    set historyIndex(index: number) {
+        this._historyIndex = index;
+    }
+
     setBit(piece: Piece, square: number): void {
         const mask = 1n << BigInt(square);
         this.bitboards[piece]! |= mask;
         this.mailbox[square] = piece;
-        
+
         if (piece & Piece.ColorMask) { // Black
             this.blackPieces |= mask;
         } else { // White
@@ -62,7 +105,7 @@ export class Board {
         const mask = ~(1n << BigInt(square));
         this.bitboards[piece]! &= mask;
         this.mailbox[square] = Piece.None;
-        
+
         if (piece & Piece.ColorMask) { // Black
             this.blackPieces &= mask;
         } else { // White
@@ -82,14 +125,14 @@ export class Board {
         }
         this.allPieces = this.whitePieces | this.blackPieces;
     }
-    
+
     clearBoard(): void {
         this.bitboards.fill(0n);
         this.whitePieces = 0n;
         this.blackPieces = 0n;
         this.allPieces = 0n;
         this.currentGameState = 0;
-        this.sideToMove = Piece.White;
+        this._sideToMove = Piece.White;
         this.mailbox.fill(Piece.None);
         this.historyIndex = 0;
     }
@@ -124,7 +167,7 @@ export class Board {
         stateEntry.sideToMove = this.sideToMove;
         stateEntry.state = this.currentGameState;
         this.historyIndex++;
-        
+
         this.currentGameState &= ~(0b111111 << 8);
         this.currentGameState &= ~BoardUtils.EP_MASK;
 
@@ -148,7 +191,7 @@ export class Board {
             this.zobristKey ^= Zobrist.pieceKeys[capturedPawn]![epCaptureSquare]!;
             this.popBit(capturedPawn, epCaptureSquare);
         }
-        
+
 
         this.zobristKey ^= Zobrist.pieceKeys[movingPiece]![source]!;
         this.popBit(movingPiece, source);
@@ -163,7 +206,7 @@ export class Board {
         this.setBit(finalPiece, target);
         this.zobristKey ^= Zobrist.pieceKeys[finalPiece]![target]!;
 
-        if(flag === MoveFlag.KingCastle) {
+        if (flag === MoveFlag.KingCastle) {
             const rookSource = target + 1;
             const rookTarget = target - 1;
             const rookPiece = this.sideToMove | Piece.Rook;
@@ -180,13 +223,13 @@ export class Board {
             this.zobristKey ^= Zobrist.pieceKeys[rookPiece]![rookTarget]!;
             this.setBit(rookPiece, rookTarget);
         }
-        
+
         if (flag === MoveFlag.DoublePawnPush) {
             const enPassantFile = source & 7;
             this.currentGameState |= ((enPassantFile + 1) << 4);
             this.zobristKey ^= Zobrist.enPassantKeys[enPassantFile]!;
         }
-        
+
         let updatedCastlingRights = oldCastlingRights;
 
         if (pieceType === Piece.King) {
@@ -200,7 +243,7 @@ export class Board {
                 else if (source === 63) updatedCastlingRights &= ~Castling.BK;
             }
         }
-    
+
         // If rook is captured
         if (flag === MoveFlag.Capture || flag >= MoveFlag.PromotionToKnightCapture) {
             if (target === 0) updatedCastlingRights &= ~Castling.WQ;
@@ -208,7 +251,7 @@ export class Board {
             if (target === 56) updatedCastlingRights &= ~Castling.BQ;
             if (target === 63) updatedCastlingRights &= ~Castling.BK;
         }
-        
+
         if (oldCastlingRights !== updatedCastlingRights) {
             this.zobristKey ^= Zobrist.castlingKeys[updatedCastlingRights]!;
         } else {
@@ -262,10 +305,41 @@ export class Board {
         }
     }
 
+    makeNullMove(): void {
+        const oldEnPassantFile = (this.currentGameState >> 4) & 0b1111;
+        const oldCastlingRights = this.currentGameState & 0b1111;
+
+        const stateEntry = this.gameStateHistory[this.historyIndex]!;
+        stateEntry.zobrist = this.zobristKey;
+        stateEntry.sideToMove = this.sideToMove;
+        stateEntry.state = this.currentGameState;
+        this.historyIndex++;
+
+        this.zobristKey ^= Zobrist.castlingKeys[oldCastlingRights]!;
+        if (oldEnPassantFile > 0) {
+            this.zobristKey ^= Zobrist.enPassantKeys[oldEnPassantFile - 1]!;
+        }
+
+        this.currentGameState &= ~BoardUtils.EP_MASK;
+
+        this.zobristKey ^= Zobrist.castlingKeys[oldCastlingRights]!;
+
+        this.zobristKey ^= Zobrist.sideKey;
+        this.sideToMove ^= Piece.ColorMask;
+    }
+
+    unmakeNullMove(): void {
+        this.sideToMove ^= Piece.ColorMask;
+        this.historyIndex--;
+        const previousState = this.gameStateHistory[this.historyIndex]!;
+        this.currentGameState = previousState.state;
+        this.zobristKey = previousState.zobrist;
+    }
+
     public isFiftyMoveRule(): boolean {
         return BoardUtils.getHalfmoveClock(this) >= 100;
     }
-    
+
     toPieceArray(): string[] {
         const pieceSymbols: { [key: number]: string } = {
             [Piece.White | Piece.Pawn]: 'P',
@@ -293,8 +367,8 @@ export class Board {
         }
         return boardArray;
     }
-    
-    loadPositionFromFen(fen : string): void {
+
+    loadPositionFromFen(fen: string): void {
         this.clearBoard();
 
         const parts = fen.split(' ');
@@ -309,7 +383,7 @@ export class Board {
             } else {
                 if (isNaN(parseInt(char))) {
                     const piece = this.pieceTypeFromSymbol(char);
-                    const square = rank*8 + file;
+                    const square = rank * 8 + file;
                     this.setBit(piece, square);
                     file++;
                 } else {
@@ -336,8 +410,8 @@ export class Board {
     }
 
     private pieceTypeFromSymbol(char: string): number {
-        const typeMap: {[key: string]: number} = {
-            'p': Piece.Pawn, 'n': Piece.Knight, 'b': Piece.Bishop, 
+        const typeMap: { [key: string]: number } = {
+            'p': Piece.Pawn, 'n': Piece.Knight, 'b': Piece.Bishop,
             'r': Piece.Rook, 'q': Piece.Queen, 'k': Piece.King
         };
         const lower = char.toLowerCase();
@@ -403,6 +477,22 @@ export namespace BoardUtils {
 
     export function getCapturedPieceType(board: Board): Piece {
         return ((board.currentGameState >> 8) & 0b111111) as Piece;
+    }
+
+    export function isThreefoldRepetition(board: Board): boolean {
+        let count = 1;
+        const currentKey = board.zobristKey;
+
+        for (let i = 0; i < board.historyIndex; i++) {
+            if (board.gameStateHistory[i]!.zobrist === currentKey) {
+                count++;
+                if (count >= 3) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     export function bitBoardCount(board: bigint): number {

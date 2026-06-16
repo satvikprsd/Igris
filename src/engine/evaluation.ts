@@ -270,30 +270,36 @@ export class Evaluation {
         
         const kingSquare = this.getLSBIndex(kingBB);
         const kingFile = kingSquare & 7;
-        const kingRank = kingSquare >> 3;
+        const isCastled = this.isKingCastled(board, color, kingSquare);
 
         let uncastledKingPenalty = 0;
+        let castledKingBonus = 0;
 
-        // king should be castled
+        if (isCastled) {
+            castledKingBonus = 24;
+        }
+
         if (kingFile <= 2 || kingFile >= 5) {
             const shieldSquares = this.getPawnShieldSquares(kingSquare, isWhite);
-            for (let i = 0; i < shieldSquares.length/2; i++) {
+            for (let i = 0; i < shieldSquares.length; i++) {
                 const sqBB = 1n << BigInt(shieldSquares[i]!);
                 if ((pawnBB & sqBB) === 0n) {
-                    if (shieldSquares.length > 3){
-                        const sq3BB = 1n << BigInt(shieldSquares[i + 3]!);
-                        if ((pawnBB & sq3BB) === 0n) {
-                            penalty += this.kingPawnShieldScores[i + 3]!;
-                        } else {
-                            penalty += this.kingPawnShieldScores[i]!;
-                        }
+                    const fallbackSquare = shieldSquares[i]! + (isWhite ? 8 : -8);
+                    const hasFallbackPawn = fallbackSquare >= 0 && fallbackSquare < 64 && (pawnBB & (1n << BigInt(fallbackSquare))) !== 0n;
+                    if (hasFallbackPawn) {
+                        penalty += this.kingPawnShieldScores[i + 3]!;
+                    } else {
+                        penalty += this.kingPawnShieldScores[i]!;
                     }
                 }
             }
             penalty = penalty * penalty;
-        } else {
+        }
+
+        if (!isCastled) {
             const enemyDevelopmentScore = Math.max(0, Math.min(1, (enemyPieceSqScore + 10)/130))
-            uncastledKingPenalty = Number(50 * enemyDevelopmentScore);
+            const centralUncastledMultiplier = (kingFile >= 3 && kingFile <= 4) ? 1 : 0.45;
+            uncastledKingPenalty = Number(55 * enemyDevelopmentScore * centralUncastledMultiplier);
         }
 
         let openFileAgainstKingPenalty = 0;
@@ -321,7 +327,19 @@ export class Evaluation {
             pawnShieldWeight *= 0.6;
         }
 
-        return ((-penalty - uncastledKingPenalty - openFileAgainstKingPenalty) * pawnShieldWeight);
+        return ((castledKingBonus - penalty - uncastledKingPenalty - openFileAgainstKingPenalty) * pawnShieldWeight);
+    }
+
+    private static isKingCastled(board: Board, color: Piece.White | Piece.Black, kingSquare: number): boolean {
+        const rookPiece = color | Piece.Rook;
+
+        if (color === Piece.White) {
+            return (kingSquare === 6 && board.getPieceOnSquare(5) === rookPiece)
+                || (kingSquare === 2 && board.getPieceOnSquare(3) === rookPiece);
+        }
+
+        return (kingSquare === 62 && board.getPieceOnSquare(61) === rookPiece)
+            || (kingSquare === 58 && board.getPieceOnSquare(59) === rookPiece);
     }
 
     private static evaluateTacticalThreats(board: Board): number {

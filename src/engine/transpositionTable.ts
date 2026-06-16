@@ -20,7 +20,7 @@ export class TranspositionTable {
     private table: TTEntry[];
     private readonly size: number;
     private generation: number = 0;
-    public static readonly LOOKUP_FAILED = -100000;
+    public static readonly LOOKUP_FAILED = Number.MIN_SAFE_INTEGER;
     private static readonly EMPTY_ENTRY: TTEntry = {
         zobrist: 0n,
         depth: 0,

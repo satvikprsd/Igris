@@ -4,7 +4,9 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "start": "tsc && node dist/index.js",
+    "build": "node build.js",
+    "start": "node build.js && node server.js",
+    "start:backend": "tsc && node dist/index.js",
     "perft": "tsc && node dist/src/tests/perft.js",
     "botvbot": "tsc && node dist/src/tests/botvbot.js"
   },
@@ -22,9 +24,10 @@
   "homepage": "https://github.com/satvikprsd/Igris#readme",
   "dependencies": {
     "chess.js": "^1.4.0",
-    "cors": "^2.8.5",
+    "cors": "^2.8.6",
     "express": "^5.2.1",
     "nodemon": "^3.1.11",
+    "onnxruntime-node": "^1.24.3",
     "pgn-parser": "^2.2.1"
   },
   "devDependencies": {
@@ -34,6 +37,7 @@
     "@types/node": "^25.2.2",
     "@types/pgn-parser": "^2.1.3",
     "chai": "^6.2.2",
+    "esbuild": "^0.28.1",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3"
   }

@@ -528,6 +528,79 @@
             width: 56px;
             height: 56px;
         }
+
+        .game-over-banner {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 85%;
+            max-width: 320px;
+            padding: 24px;
+            border-radius: 16px;
+            text-align: center;
+            font-size: 20px;
+            font-weight: 700;
+            color: #ffffff;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+            animation: fadeInScale 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+        }
+
+        .game-over-banner.win-white {
+            background: rgba(248, 250, 252, 0.9);
+            /* soft white */
+            color: #111827;
+            border: 1px solid rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(12px);
+            text-shadow: none;
+        }
+
+        .game-over-banner.win-black {
+            background: rgba(17, 24, 39, 0.9);
+            /* deep charcoal */
+            color: #f9fafb;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(12px);
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
+        }
+
+        .game-over-banner.draw {
+            background: rgba(30, 41, 59, 0.85);
+            border: 1px solid rgba(255, 255, 255, 0.25);
+            backdrop-filter: blur(12px);
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        .game-over-banner-title {
+            font-size: 24px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            font-weight: 800;
+        }
+
+        .game-over-banner-reason {
+            font-size: 14px;
+            font-weight: 400;
+            opacity: 0.9;
+        }
+
+        @keyframes fadeInScale {
+            from {
+                transform: translate(-50%, -50%) scale(0.85);
+                opacity: 0;
+            }
+
+            to {
+                transform: translate(-50%, -50%) scale(1);
+                opacity: 1;
+            }
+        }
     </style>
 </head>
 
@@ -543,6 +616,7 @@
                     </div>
                     <div id="board-wrapper" style="position: relative;">
                         <div id="board" class="chessboard"></div>
+                        <div id="game-over-banner" class="game-over-banner" style="display: none;"></div>
                     </div>
                 </div>
             </div>
@@ -619,6 +693,11 @@
         let currentLegalMoves = [];
         let botEnabled = false;
         let botVsBotEnabled = false;
+        let isGameOver = false;
+        let preventImmediateClose = false;
+        let lastGameOverTitle = '';
+        let lastGameOverReason = '';
+        let lastGameOverTypeClass = '';
         let isProcessingBotMove = false;
         let playerColor = 'white';
         let currentEvaluation = 0;
@@ -713,13 +792,15 @@
                     renderBoard(currentBoardState);
                 }
                 showStatus('Viewing current position', 'info');
+                if (isGameOver) {
+                    showGameOverBannerCurrent();
+                }
             } else {
                 isViewingHistory = true;
                 currentHistoryIndex = index;
                 renderBoard(boardHistory[index]);
-                const moveNum = Math.floor(index / 2) + 1;
-                const isWhiteMove = index % 2 === 0;
-                showStatus(`Viewing move ${moveNum}${isWhiteMove ? '' : '...'}`, 'info');
+                showStatus(`Viewing move ${index + 1} of ${boardHistory.length}`, 'info');
+                hideGameOverBanner();
             }
         }
 
@@ -779,8 +860,10 @@
                 const legalMoves = moveGenerator.generateLegalMoves(board.sideToMove);
                 const isThreefoldDraw = IgrisEngine.BoardUtils.isThreefoldRepetition(board);
                 const isStalemate = !moveGenerator.isKingInCheck(board.sideToMove) && legalMoves.length === 0;
-                const isDraw = isThreefoldDraw || isStalemate || board.isFiftyMoveRule();
+                const isInsufficient = board.hasInsufficientMaterial();
+                const isDraw = isThreefoldDraw || isStalemate || board.isFiftyMoveRule() || isInsufficient;
                 const isCheckMate = moveGenerator.isKingInCheck(board.sideToMove) && legalMoves.length === 0;
+                isGameOver = isDraw || isCheckMate;
 
                 currentBoardState = board.toPieceArray();
 
@@ -796,15 +879,30 @@
                 }
 
                 if (isCheckMate) {
-                    showStatus(`CHECKMATE! ${currentTurn === 'white' ? 'Black' : 'White'} wins!`, 'error');
+                    const winner = currentTurn === 'white' ? 'Black' : 'White';
+                    showStatus(`CHECKMATE! ${winner} wins!`, 'error');
+                    showGameOverBanner('CHECKMATE', `${winner} wins!`, winner === 'White' ? 'win-white' : 'win-black');
                 } else if (isDraw) {
                     let drawText = 'Draw!';
-                    if (isThreefoldDraw) drawText = 'Draw by threefold repetition!';
-                    else if (isStalemate) drawText = 'Draw by stalemate!';
-                    else if (board.isFiftyMoveRule()) drawText = 'Draw by fifty-move rule!';
+                    let reasonText = 'Draw';
+                    if (isThreefoldDraw) {
+                        drawText = 'Draw by threefold repetition!';
+                        reasonText = 'Draw by threefold repetition';
+                    } else if (isStalemate) {
+                        drawText = 'Draw by stalemate!';
+                        reasonText = 'Draw by stalemate';
+                    } else if (board.isFiftyMoveRule()) {
+                        drawText = 'Draw by fifty-move rule!';
+                        reasonText = 'Draw by fifty-move rule';
+                    } else if (isInsufficient) {
+                        drawText = 'Draw by insufficient material!';
+                        reasonText = 'Draw by insufficient material';
+                    }
                     showStatus(drawText, 'info');
+                    showGameOverBanner('DRAW', reasonText, 'draw');
                 } else {
                     showStatus('Game in progress', 'success');
+                    hideGameOverBanner();
                 }
 
                 const shouldBotMove = botVsBotEnabled || (botEnabled && currentTurn !== playerColor);
@@ -815,6 +913,38 @@
             } catch (err) {
                 console.error("Error updating board state:", err);
                 showStatus(`Error: ${err.message}`, 'error');
+            }
+        }
+
+        function showGameOverBanner(title, reason, typeClass) {
+            lastGameOverTitle = title;
+            lastGameOverReason = reason;
+            lastGameOverTypeClass = typeClass;
+
+            const banner = document.getElementById('game-over-banner');
+            if (banner) {
+                banner.innerHTML = `
+                    <div class="game-over-banner-title">${title}</div>
+                    <div class="game-over-banner-reason">${reason}</div>
+                `;
+                banner.className = `game-over-banner ${typeClass}`;
+                banner.style.display = 'flex';
+
+                preventImmediateClose = true;
+                setTimeout(() => { preventImmediateClose = false; }, 100);
+            }
+        }
+
+        function hideGameOverBanner() {
+            const banner = document.getElementById('game-over-banner');
+            if (banner) {
+                banner.style.display = 'none';
+            }
+        }
+
+        function showGameOverBannerCurrent() {
+            if (lastGameOverTitle) {
+                showGameOverBanner(lastGameOverTitle, lastGameOverReason, lastGameOverTypeClass);
             }
         }
 
@@ -952,6 +1082,10 @@
                 return;
             }
 
+            if (isGameOver) {
+                return;
+            }
+
             const square = e.currentTarget;
             const squareIndex = parseInt(square.dataset.index);
             const piece = square.querySelector('.piece-img');
@@ -1022,6 +1156,11 @@
         function handleDragStart(e) {
             if (isViewingHistory) {
                 viewHistoryPosition(-1);
+                e.preventDefault();
+                return;
+            }
+
+            if (isGameOver) {
                 e.preventDefault();
                 return;
             }
@@ -1293,6 +1432,13 @@
                 clearSelection();
                 if (currentBoardState) {
                     renderBoard(currentBoardState);
+                }
+            }
+
+            const banner = document.getElementById('game-over-banner');
+            if (banner && banner.style.display !== 'none' && !banner.contains(e.target)) {
+                if (!preventImmediateClose) {
+                    banner.style.display = 'none';
                 }
             }
         });

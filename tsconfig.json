@@ -10,18 +10,20 @@
     "module": "commonjs",
     "target": "ES2022",
     "moduleResolution": "node",
-    "types": ["node"],
-    "lib": ["ES2022"],
-
+    "types": [
+      "node"
+    ],
+    "lib": [
+      "ES2022",
+      "WebWorker"
+    ],
     // Other Outputs
     "sourceMap": true,
     "declaration": true,
     "declarationMap": true,
-
     // Stricter Typechecking Options
     "noUncheckedIndexedAccess": true,
     "exactOptionalPropertyTypes": true,
-
     // Style Options
     // "noImplicitReturns": true,
     // "noImplicitOverride": true,
@@ -29,7 +31,6 @@
     // "noUnusedParameters": true,
     // "noFallthroughCasesInSwitch": true,
     // "noPropertyAccessFromIndexSignature": true,
-
     // Recommended Options
     "strict": true,
     "jsx": "react-jsx",

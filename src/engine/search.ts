@@ -169,6 +169,10 @@ export class Search {
             return 0; // threefold repetition draw
         }
 
+        if (this.board.hasInsufficientMaterial()) {
+            return 0;
+        }
+
         if (plyFromRoot > 0) {
 
             alpha = Math.max(alpha, -this.immediateMateScore + plyFromRoot);

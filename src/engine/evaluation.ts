@@ -125,6 +125,10 @@ export class Evaluation {
     static PSTScalingFactor = 0.8;
 
     public static evaluate(board: Board): number {
+        if (board.hasInsufficientMaterial()) {
+            return 0;
+        }
+
         let whiteEval = 0;
         let blackEval = 0;
 

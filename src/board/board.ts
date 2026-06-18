@@ -451,6 +451,43 @@ export class Board {
             console.log(row);
         }
     }
+
+    public hasInsufficientMaterial(): boolean {
+        if (this.bitboards[Piece.White | Piece.Pawn] !== 0n || this.bitboards[Piece.Black | Piece.Pawn] !== 0n ||
+            this.bitboards[Piece.White | Piece.Rook] !== 0n || this.bitboards[Piece.Black | Piece.Rook] !== 0n ||
+            this.bitboards[Piece.White | Piece.Queen] !== 0n || this.bitboards[Piece.Black | Piece.Queen] !== 0n) {
+            return false;
+        }
+
+        const wKnights = BoardUtils.bitBoardCount(this.bitboards[Piece.White | Piece.Knight]!);
+        const bKnights = BoardUtils.bitBoardCount(this.bitboards[Piece.Black | Piece.Knight]!);
+        const wBishops = BoardUtils.bitBoardCount(this.bitboards[Piece.White | Piece.Bishop]!);
+        const bBishops = BoardUtils.bitBoardCount(this.bitboards[Piece.Black | Piece.Bishop]!);
+
+        const totalMinors = wKnights + bKnights + wBishops + bBishops;
+
+        if (totalMinors === 0) {
+            return true; // King vs King
+        } else if (totalMinors === 1) {
+            return true; // King & Bishop vs King, or King & Knight vs King
+        } else if (totalMinors === 2) {
+            // King & Bishop vs King & Bishop (same color)
+            if (wBishops === 1 && bBishops === 1 && wKnights === 0 && bKnights === 0) {
+                const wBishopBB = this.bitboards[Piece.White | Piece.Bishop]!;
+                const bBishopBB = this.bitboards[Piece.Black | Piece.Bishop]!;
+
+                const wBishopSquare = BoardUtils.getLSBIndex(wBishopBB);
+                const bBishopSquare = BoardUtils.getLSBIndex(bBishopBB);
+
+                const wColor = ((wBishopSquare >> 3) + wBishopSquare) & 1;
+                const bColor = ((bBishopSquare >> 3) + bBishopSquare) & 1;
+
+                return wColor === bColor;
+            }
+        }
+
+        return false;
+    }
 }
 
 
@@ -503,5 +540,10 @@ export namespace BoardUtils {
             count++;
         }
         return count;
+    }
+
+    export function getLSBIndex(bb: bigint): number {
+        if (bb === 0n) return -1;
+        return Number(BigInt.asUintN(64, bb & -bb).toString(2).length - 1);
     }
 }

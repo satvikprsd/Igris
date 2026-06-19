@@ -839,6 +839,14 @@
 
             evalBarEl.style.height = `${percentage}%`;
 
+            if (playerColor === 'white') {
+                evalBarEl.style.bottom = '0';
+                evalBarEl.style.top = 'unset';
+            } else {
+                evalBarEl.style.top = '0';
+                evalBarEl.style.bottom = 'unset';
+            }
+
             let labelText;
             if (Math.abs(evaluation) > 50) {
                 const mateIn = Math.round(1000 - Math.abs(evaluation));
@@ -1002,8 +1010,21 @@
         function renderBoard(boardArray) {
             boardEl.innerHTML = '';
 
-            for (let rank = 7; rank >= 0; rank--) {
-                for (let file = 0; file < 8; file++) {
+            const isFlipped = playerColor === 'black';
+
+            const rankStart = isFlipped ? 0 : 7;
+            const rankEnd = isFlipped ? 8 : -1;
+            const rankStep = isFlipped ? 1 : -1;
+
+            const fileStart = isFlipped ? 7 : 0;
+            const fileEnd = isFlipped ? -1 : 8;
+            const fileStep = isFlipped ? -1 : 1;
+
+            const leftmostFile = isFlipped ? 7 : 0;
+            const bottommostRank = isFlipped ? 7 : 0;
+
+            for (let rank = rankStart; rank !== rankEnd; rank += rankStep) {
+                for (let file = fileStart; file !== fileEnd; file += fileStep) {
                     const squareIndex = rank * 8 + file;
                     const pieceChar = boardArray[squareIndex];
 
@@ -1013,14 +1034,14 @@
                     sq.dataset.rank = rank;
                     sq.dataset.file = file;
 
-                    if (file === 0) {
+                    if (file === leftmostFile) {
                         const rankLabel = document.createElement('span');
                         rankLabel.className = 'square-coordinate rank';
                         rankLabel.textContent = rank + 1;
                         sq.appendChild(rankLabel);
                     }
 
-                    if (rank === 0) {
+                    if (rank === bottommostRank) {
                         const fileLabel = document.createElement('span');
                         fileLabel.className = 'square-coordinate file';
                         const files = 'abcdefgh';
@@ -1330,6 +1351,7 @@
         function flipSide() {
             playerColor = playerColor === 'white' ? 'black' : 'white';
             fetchBoard();
+            updateEvalBar(currentEvaluation);
             showStatus(`You are now playing as ${playerColor.charAt(0).toUpperCase() + playerColor.slice(1)}`, 'success');
         }
 
